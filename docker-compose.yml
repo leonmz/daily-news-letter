@@ -1,0 +1,7 @@
+services:
+  newsletter:
+    build: .
+    env_file:
+      - .env
+    # Run once (default) — override with: docker compose run newsletter --schedule
+    # command: ["--schedule"]
