@@ -96,6 +96,53 @@ Phase 3 danuglipron trial missed primary endpoint.
 
 ---
 
+## V1.5：Improve Top Movers Accuracy
+
+### 问题
+当前 top movers 只抓 yfinance screener 的 day_gainers/day_losers，经常返回小盘股（如 AAOI、YSS），缺少大盘股的涨跌信息。用户也无法追踪自己持仓的表现��
+
+### 新增功能
+
+**1. 市场开盘时间校验**
+- 运行时检查当前���间是否在 US 市场交易时段（ET 9:30-16:00，周一到周五）
+- 如果盘前/盘后/周末运行，使用上一个交易日的数据而非实时数据
+- 用 `zoneinfo` 或 `pytz` 做时区转换（ET），避免拉到空数据或盘前异常数据
+
+**2. Top 10 大盘股涨跌**
+- 额外拉取 Top 10 市值公司的当日涨跌（AAPL, MSFT, NVDA, AMZN, GOOG, META, TSLA, BRK-B, JPM, V）
+- 通过 `yf.download(tickers, period="1d")` 批量获取，无需额外 API
+- 在 digest 中新增 "Blue Chip Movers" 板块，展示大盘股当日表现
+- 只展示涨跌幅 > 1% 的大盘股（过滤掉无聊的小波动）
+
+**3. 用户自定义持仓 Watchlist**
+- `.env` 中新增 `WATCHLIST=NVDA,TSLA,AAPL`（逗号分隔，最多 10 个）
+- 通过 `yf.download()` 批量获取持仓的当日涨跌
+- 在 digest 中新增 "Your Holdings" 板块
+- 如果 watchlist ticker 已在 top movers 中，避免重复展示
+
+### 数据流变更
+
+```
+[yfinance screen] ──→ Top 5 Gainers + Top 5 Losers (现有)
+[yfinance download] ──→ Top 10 大盘股当日涨跌 (新增)
+[yfinance download] ��─→ 用户 Watchlist 涨跌 (新增)
+[市场时间校验] ──→ 决定用实时数据还是上一交易日数据
+                    │
+                    ▼
+              合并所有 movers → News → LLM → Telegram
+```
+
+### 修改文件
+- `config.py` — 新增 `WATCHLIST`、`TOP_BLUE_CHIPS` 配置
+- `market_data.py` — 新增 `fetch_blue_chips()`、`fetch_watchlist()`、`is_market_open()`
+- `main.py` — 合并三个来源的 movers
+
+### API 用量影响
+- yfinance `download()` 无 API 限制，不影响配额
+- 新闻会多查几个 ticker（大盘股 + watchlist），Google News RSS 免费无限制
+
+---
+
 ## V2：Watchlist + Breaking News（Phase 2）
 
 ### 新增功能
@@ -169,14 +216,14 @@ Phase 3 danuglipron trial missed primary endpoint.
 - [x] 项目结构搭建
 - [x] `config.py` — API key 管理 + 板块映射
 - [x] `market_data.py` — FMP top movers + yfinance fallback + 板块补全
-- [x] `news_fetcher.py` — Marketaux + RSS + sentiment 提取
-- [x] `llm_analyzer.py` — Claude 分析 prompt + fallback 模板
+- [x] `news_fetcher.py` — Marketaux + Google News RSS（已简化，移除 RSS）
+- [x] `llm_analyzer.py` — Gemini ��析 + Claude fallback
 - [x] `main.py` — 完整 pipeline + scheduler + Telegram + test mode
 - [x] `.env.example` + `.gitignore` + `requirements.txt`
-- [ ] 注册 API keys (FMP, Marketaux, Anthropic)
-- [ ] 创建 Telegram Bot (@BotFather)
-- [ ] 端到端测试 (`python main.py --test` → `python main.py`)
-- [ ] 部署到常驻运行环境（本地 / VPS / Docker）
+- [x] 注册 API keys + 创建 Telegram Bot
+- [x] 端到端测试（10/10 tickers with news）
+- [x] Docker 部署支持
+- [ ] V1.5: 改进 top movers（市场时间校验 + 大盘股 + watchlist）
 - [ ] V2 watchlist + breaking news
 
 ---

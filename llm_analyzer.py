@@ -44,7 +44,12 @@ def build_analysis_prompt(movers: dict, news: dict) -> str:
 
     sections.append("# TODAY'S TOP MOVERS\n")
 
-    for direction, label in [("gainers", "TOP GAINERS"), ("losers", "TOP LOSERS")]:
+    for direction, label in [
+        ("gainers", "TOP GAINERS"),
+        ("losers", "TOP LOSERS"),
+        ("blue_chips", "BLUE CHIP MOVERS"),
+        ("watchlist", "YOUR HOLDINGS"),
+    ]:
         sections.append(f"\n## {label}")
         for m in movers.get(direction, []):
             ticker = m["ticker"]
@@ -116,7 +121,29 @@ def _fallback_summary(movers: dict, news: dict) -> str:
     """Simple template-based summary when LLM is unavailable."""
     lines = ["## Market movers (no LLM analysis)\n"]
 
-    # Group by sector
+    # Blue chips section
+    if movers.get("blue_chips"):
+        lines.append("\n### 📈 Blue Chip Movers")
+        for m in movers["blue_chips"]:
+            sign = "+" if m["change_pct"] >= 0 else ""
+            arrow = "▲" if m["change_pct"] >= 0 else "▼"
+            lines.append(f"{arrow} **{m['ticker']}** ({sign}{m['change_pct']}%) — ${m['price']:.2f}")
+            ticker_news = news.get(m["ticker"], [])
+            if ticker_news:
+                lines.append(f"  → {ticker_news[0]['title'][:100]}")
+
+    # Watchlist section
+    if movers.get("watchlist"):
+        lines.append("\n### 👀 Your Holdings")
+        for m in movers["watchlist"]:
+            sign = "+" if m["change_pct"] >= 0 else ""
+            arrow = "▲" if m["change_pct"] >= 0 else "▼"
+            lines.append(f"{arrow} **{m['ticker']}** ({sign}{m['change_pct']}%) — ${m['price']:.2f}")
+            ticker_news = news.get(m["ticker"], [])
+            if ticker_news:
+                lines.append(f"  → {ticker_news[0]['title'][:100]}")
+
+    # Group top movers by sector
     by_sector: dict[str, list] = {}
     for direction in ["gainers", "losers"]:
         for m in movers.get(direction, []):

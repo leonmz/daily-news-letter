@@ -11,6 +11,15 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
+# User watchlist (comma-separated tickers, max 10)
+WATCHLIST = [t.strip().upper() for t in os.getenv("WATCHLIST", "").split(",") if t.strip()][:10]
+
+# Top blue chip tickers by market cap
+TOP_BLUE_CHIPS = [
+    "AAPL", "MSFT", "NVDA", "AMZN", "GOOG",
+    "META", "TSLA", "BRK-B", "JPM", "V",
+]
+
 # FMP base URL
 FMP_BASE = "https://financialmodelingprep.com/api/v3"
 
