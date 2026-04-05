@@ -189,8 +189,8 @@ def get_news_for_movers(movers: dict, limit_per_ticker: int = 3) -> dict[str, li
     """
     all_tickers = []
     ticker_names = {}
-    for direction in ["gainers", "losers"]:
-        for m in movers.get(direction, []):
+    for key in ["gainers", "losers", "blue_chips", "watchlist"]:
+        for m in movers.get(key, []):
             all_tickers.append(m["ticker"])
             if m.get("name"):
                 ticker_names[m["ticker"]] = m["name"]
