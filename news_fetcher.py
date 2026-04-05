@@ -3,9 +3,12 @@ Fetch news for given tickers / sectors.
 
 Primary: Marketaux API (free tier: 100 req/day, sentiment included)
 Fallback: RSS feeds from major financial news sites
+Last resort: Google News RSS (per-ticker search, free, no API key)
 """
 
+import re
 import time
+import urllib.parse
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -100,6 +103,38 @@ def _extract_sentiment(article: dict, tickers: list[str]) -> Optional[float]:
     return round(sum(scores) / len(scores), 3) if scores else None
 
 
+# ── Company name matching helpers ─────────────────────────────
+
+_NAME_SUFFIXES = re.compile(
+    r"\b(Inc\.?|Corp\.?|Ltd\.?|Co\.?|Holdings?|Group|Plc|LLC|LP|N\.?V\.?"
+    r"|Class [A-Z]|Cl [A-Z]|Common Stock|Ordinary Shares)\b",
+    re.IGNORECASE,
+)
+
+
+def _clean_company_name(name: str) -> str:
+    """Strip corporate suffixes to get a matchable company name."""
+    cleaned = _NAME_SUFFIXES.sub("", name).strip()
+    # Remove trailing punctuation/whitespace
+    cleaned = re.sub(r"[,.\s]+$", "", cleaned).strip()
+    return cleaned
+
+
+def _build_search_terms(ticker: str, company_name: str | None) -> list[tuple[str, bool]]:
+    """Build search terms for a ticker. Returns [(pattern, is_substring), ...]."""
+    terms = [
+        (f"${ticker}", False),
+        (f"({ticker})", False),
+        (f" {ticker} ", False),
+    ]
+    if company_name:
+        cleaned = _clean_company_name(company_name)
+        # Only use name matching if name is meaningful (>= 6 chars or >= 2 words)
+        if len(cleaned) >= 6 or len(cleaned.split()) >= 2:
+            terms.append((cleaned, True))
+    return terms
+
+
 # ── RSS Feeds (fallback / custom sources) ──────────────────────
 
 # Popular financial RSS feeds
@@ -109,20 +144,26 @@ RSS_FEEDS = {
     "yahoo_finance": "https://finance.yahoo.com/news/rssindex",
     "marketwatch": "https://feeds.marketwatch.com/marketwatch/topstories/",
     "seeking_alpha": "https://seekingalpha.com/market_currents.xml",
+    "benzinga": "https://www.benzinga.com/feed",
+    "investorplace": "https://investorplace.com/feed/",
+    "thestreet": "https://www.thestreet.com/feed",
+    "pr_newswire_biz": "https://www.prnewswire.com/rss/financial-services-latest-news/financial-services-latest-news-list.rss",
 }
 
 
 def fetch_news_rss(
     tickers: list[str],
+    ticker_names: dict[str, str] | None = None,
     feeds: Optional[dict[str, str]] = None,
     limit_per_ticker: int = 3,
 ) -> dict[str, list[dict]]:
     """
-    Fetch news from RSS feeds, filter by ticker mentions.
-    Less precise than Marketaux but free and unlimited.
+    Fetch news from RSS feeds, filter by ticker and company name mentions.
     """
     if feeds is None:
         feeds = RSS_FEEDS
+    if ticker_names is None:
+        ticker_names = {}
 
     all_articles = []
     for feed_name, feed_url in feeds.items():
@@ -142,24 +183,90 @@ def fetch_news_rss(
         except Exception as e:
             print(f"[rss] Error fetching {feed_name}: {e}")
 
-    # Simple ticker matching in title/description
+    # Match articles to tickers using ticker symbols + company names
     result = {}
     for ticker in tickers:
-        ticker_upper = ticker.upper()
+        search_terms = _build_search_terms(ticker, ticker_names.get(ticker))
         matches = []
         for article in all_articles:
-            text = f"{article['title']} {article['description']}".upper()
-            # Match $TICKER, (TICKER), or standalone TICKER
-            if (
-                f"${ticker_upper}" in text
-                or f"({ticker_upper})" in text
-                or f" {ticker_upper} " in text
-            ):
-                matches.append(article)
-                if len(matches) >= limit_per_ticker:
-                    break
+            text = f" {article['title']} {article['description']} ".upper()
+            for pattern, is_substring in search_terms:
+                if is_substring:
+                    if pattern.upper() in text:
+                        matches.append(article)
+                        break
+                else:
+                    if pattern.upper() in text:
+                        matches.append(article)
+                        break
+            if len(matches) >= limit_per_ticker:
+                break
         if matches:
             result[ticker] = matches
+
+    return result
+
+
+# ── Google News RSS (per-ticker search) ───────────────────────
+
+_GOOGLE_NEWS_RSS = "https://news.google.com/rss/search"
+_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+
+
+def fetch_news_google_rss(
+    tickers: list[str],
+    ticker_names: dict[str, str] | None = None,
+    limit_per_ticker: int = 3,
+) -> dict[str, list[dict]]:
+    """
+    Fetch news via Google News RSS search per ticker.
+    Free, no API key, targeted per-ticker.
+    """
+    if ticker_names is None:
+        ticker_names = {}
+
+    result = {}
+    for ticker in tickers:
+        name = ticker_names.get(ticker)
+        if name:
+            cleaned = _clean_company_name(name)
+            query = f'"{cleaned}" OR "{ticker}" stock'
+        else:
+            query = f'"{ticker}" stock'
+
+        url = f"{_GOOGLE_NEWS_RSS}?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en&when=1d"
+
+        try:
+            parsed = feedparser.parse(
+                url, request_headers={"User-Agent": _USER_AGENT}
+            )
+            articles = []
+            for entry in parsed.entries[:limit_per_ticker]:
+                title = entry.get("title", "")
+                # Google News titles are "Article Title - Source Name"
+                source = "google_news"
+                if " - " in title:
+                    parts = title.rsplit(" - ", 1)
+                    title = parts[0]
+                    source = parts[1].strip().lower()
+
+                articles.append({
+                    "title": title,
+                    "description": entry.get("summary", ""),
+                    "url": entry.get("link", ""),
+                    "source": source,
+                    "published_at": entry.get("published", ""),
+                    "sentiment": None,
+                })
+
+            if articles:
+                result[ticker] = articles
+                print(f"[google-news] {ticker}: {len(articles)} articles")
+
+        except Exception as e:
+            print(f"[google-news] Error for {ticker}: {e}")
+
+        time.sleep(0.3)
 
     return result
 
@@ -168,23 +275,38 @@ def fetch_news_rss(
 
 def get_news_for_movers(movers: dict, limit_per_ticker: int = 3) -> dict[str, list[dict]]:
     """
-    Get news for all movers. Try Marketaux first, fill gaps with RSS.
-    Returns {ticker: [article, ...]}
+    Get news for all movers. 3-tier waterfall:
+    1. Marketaux (best quality, limited quota)
+    2. RSS feeds (broad, free, now with company name matching)
+    3. Google News RSS (targeted per-ticker, free)
     """
+    # Build ticker list and name mapping
     all_tickers = []
+    ticker_names = {}
     for direction in ["gainers", "losers"]:
         for m in movers.get(direction, []):
             all_tickers.append(m["ticker"])
+            if m.get("name"):
+                ticker_names[m["ticker"]] = m["name"]
 
-    # Primary: Marketaux
+    # Tier 1: Marketaux
     news = fetch_news_marketaux(all_tickers, limit_per_ticker)
 
-    # Fill gaps with RSS
+    # Tier 2: RSS feeds (with company name matching)
     missing = [t for t in all_tickers if t not in news or not news[t]]
     if missing:
         print(f"[news] Filling {len(missing)} tickers via RSS...")
-        rss_news = fetch_news_rss(missing, limit_per_ticker=limit_per_ticker)
+        rss_news = fetch_news_rss(missing, ticker_names, limit_per_ticker=limit_per_ticker)
         for t, articles in rss_news.items():
+            if t not in news:
+                news[t] = articles
+
+    # Tier 3: Google News RSS (per-ticker search)
+    still_missing = [t for t in all_tickers if t not in news or not news[t]]
+    if still_missing:
+        print(f"[news] Searching Google News for {len(still_missing)} tickers...")
+        google_news = fetch_news_google_rss(still_missing, ticker_names, limit_per_ticker)
+        for t, articles in google_news.items():
             if t not in news:
                 news[t] = articles
 
@@ -198,13 +320,13 @@ if __name__ == "__main__":
     # Test with some known tickers
     test_movers = {
         "gainers": [
-            {"ticker": "NVDA"},
-            {"ticker": "AAPL"},
-            {"ticker": "TSLA"},
+            {"ticker": "NVDA", "name": "NVIDIA Corp"},
+            {"ticker": "AAPL", "name": "Apple Inc"},
+            {"ticker": "TSLA", "name": "Tesla Inc"},
         ],
         "losers": [
-            {"ticker": "META"},
-            {"ticker": "AMZN"},
+            {"ticker": "META", "name": "Meta Platforms"},
+            {"ticker": "AMZN", "name": "Amazon.com Inc"},
         ],
     }
 
