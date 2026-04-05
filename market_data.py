@@ -39,6 +39,8 @@ def _is_trading_day(d: datetime) -> bool:
     """Check if a given date is a NYSE trading day (not weekend or holiday)."""
     if d.weekday() > 4:
         return False
+    if d.year != 2026:
+        print(f"[market] ⚠️ NYSE holiday calendar only covers 2026, current year is {d.year}")
     return d.strftime("%Y-%m-%d") not in NYSE_HOLIDAYS_2026
 
 
@@ -165,6 +167,23 @@ def _fetch_tickers_daily(tickers: list[str], label: str) -> list[dict]:
             print(f"[{label}] No data returned for {trading_day}")
             return []
 
+        # Batch fetch ticker info (name + sector) via yf.Tickers
+        ticker_info = {}
+        try:
+            batch = yf.Tickers(" ".join(tickers))
+            for ticker in tickers:
+                try:
+                    info = batch.tickers[ticker].info
+                    ticker_info[ticker] = {
+                        "name": info.get("shortName", ticker),
+                        "sector_raw": info.get("sector", "Unknown"),
+                    }
+                except Exception:
+                    ticker_info[ticker] = {"name": ticker, "sector_raw": "Unknown"}
+        except Exception:
+            for ticker in tickers:
+                ticker_info[ticker] = {"name": ticker, "sector_raw": "Unknown"}
+
         results = []
         for ticker in tickers:
             try:
@@ -178,21 +197,14 @@ def _fetch_tickers_daily(tickers: list[str], label: str) -> list[dict]:
                     volume = int(df["Volume"][ticker].iloc[-1])
 
                 change_abs = round(close - opn, 2)
-                change_pct = round((change_abs / opn) * 100, 2) if opn else 0
+                change_pct = round((change_abs / opn) * 100, 2) if opn > 0 else 0
 
-                # Get name and sector
-                try:
-                    info = yf.Ticker(ticker).info
-                    name = info.get("shortName", ticker)
-                    sector_raw = info.get("sector", "Unknown")
-                except Exception:
-                    name = ticker
-                    sector_raw = "Unknown"
-
+                info = ticker_info.get(ticker, {"name": ticker, "sector_raw": "Unknown"})
+                sector_raw = info["sector_raw"]
                 sector = SECTOR_MAP.get(sector_raw, sector_raw.lower())
                 results.append({
                     "ticker": ticker,
-                    "name": name,
+                    "name": info["name"],
                     "price": close,
                     "change_pct": change_pct,
                     "change_abs": change_abs,
