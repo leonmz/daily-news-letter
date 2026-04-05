@@ -22,6 +22,12 @@ class TestCleanCompanyName(unittest.TestCase):
     def test_strips_class(self):
         self.assertEqual(_clean_company_name("Alphabet Class A"), "Alphabet")
 
+    def test_suffix_only_returns_empty(self):
+        self.assertEqual(_clean_company_name("Inc."), "")
+
+    def test_empty_input(self):
+        self.assertEqual(_clean_company_name(""), "")
+
 
 class TestGetNewsForMovers(unittest.TestCase):
     """Integration test: verify 2-tier waterfall with mocked APIs."""
