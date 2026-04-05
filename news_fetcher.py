@@ -8,7 +8,7 @@ Tier 2: Google News RSS (primary workhorse, free, per-ticker search)
 import re
 import time
 import urllib.parse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import feedparser
@@ -33,7 +33,7 @@ def fetch_news_marketaux(
 
     result = {}
     published_after = (
-        datetime.utcnow() - timedelta(hours=hours_back)
+        datetime.now(timezone.utc) - timedelta(hours=hours_back)
     ).strftime("%Y-%m-%dT%H:%M")
 
     # Marketaux supports comma-separated tickers (max 5 per call)
@@ -137,10 +137,11 @@ def fetch_news_google(
     for ticker in tickers:
         name = ticker_names.get(ticker)
         cleaned = _clean_company_name(name) if name else ""
+        t = ticker.upper()
         if cleaned and (len(cleaned) >= 6 or len(cleaned.split()) >= 2):
-            query = f'"{cleaned}" OR "{ticker}" stock'
+            query = f'"{cleaned}" OR "{t}" stock'
         else:
-            query = f'"{ticker}" stock'
+            query = f'"{t}" stock'
 
         url = f"{_GOOGLE_NEWS_RSS}?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en&when=1d"
 
