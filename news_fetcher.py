@@ -120,19 +120,15 @@ def _clean_company_name(name: str) -> str:
     return cleaned
 
 
-def _build_search_terms(ticker: str, company_name: str | None) -> list[tuple[str, bool]]:
-    """Build search terms for a ticker. Returns [(pattern, is_substring), ...]."""
+def _build_search_terms(ticker: str, company_name: str | None) -> list[str]:
+    """Build uppercase search patterns for a ticker."""
     t = ticker.upper()
-    terms = [
-        (f"${t}", False),
-        (f"({t})", False),
-        (f" {t} ", False),
-    ]
+    terms = [f"${t}", f"({t})", f" {t} "]
     if company_name:
         cleaned = _clean_company_name(company_name)
         # Only use name matching if name is meaningful (>= 6 chars or >= 2 words)
         if len(cleaned) >= 6 or len(cleaned.split()) >= 2:
-            terms.append((cleaned.upper(), True))
+            terms.append(cleaned.upper())
     return terms
 
 
@@ -169,7 +165,9 @@ def fetch_news_rss(
     all_articles = []
     for feed_name, feed_url in feeds.items():
         try:
-            parsed = feedparser.parse(feed_url)
+            resp = requests.get(feed_url, timeout=10)
+            resp.raise_for_status()
+            parsed = feedparser.parse(resp.content)
             for entry in parsed.entries[:30]:  # cap per feed
                 all_articles.append(
                     {
@@ -191,7 +189,7 @@ def fetch_news_rss(
         matches = []
         for article in all_articles:
             text = f" {article['title']} {article['description']} ".upper()
-            for pattern, is_substring in search_terms:
+            for pattern in search_terms:
                 if pattern in text:
                     matches.append(article)
                     break
@@ -224,8 +222,8 @@ def fetch_news_google_rss(
     result = {}
     for ticker in tickers:
         name = ticker_names.get(ticker)
-        if name:
-            cleaned = _clean_company_name(name)
+        cleaned = _clean_company_name(name) if name else ""
+        if cleaned and (len(cleaned) >= 6 or len(cleaned.split()) >= 2):
             query = f'"{cleaned}" OR "{ticker}" stock'
         else:
             query = f'"{ticker}" stock'
@@ -233,9 +231,9 @@ def fetch_news_google_rss(
         url = f"{_GOOGLE_NEWS_RSS}?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en&when=1d"
 
         try:
-            parsed = feedparser.parse(
-                url, request_headers={"User-Agent": _USER_AGENT}
-            )
+            resp = requests.get(url, headers={"User-Agent": _USER_AGENT}, timeout=10)
+            resp.raise_for_status()
+            parsed = feedparser.parse(resp.content)
             articles = []
             for entry in parsed.entries[:limit_per_ticker]:
                 title = entry.get("title", "")
