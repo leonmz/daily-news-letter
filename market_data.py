@@ -20,18 +20,42 @@ from config import FMP_API_KEY, FMP_BASE, SECTOR_MAP, TOP_BLUE_CHIPS, WATCHLIST
 
 ET = ZoneInfo("America/New_York")
 
-# NYSE holidays (fixed + observed). Regenerate yearly or use a library.
-# For 2026: https://www.nyse.com/markets/hours-calendars
-NYSE_HOLIDAYS_2026 = {
-    "2026-01-01",  # New Year's Day
-    "2026-01-19",  # MLK Jr. Day
-    "2026-02-16",  # Presidents' Day
-    "2026-04-03",  # Good Friday
-    "2026-05-25",  # Memorial Day
-    "2026-07-03",  # Independence Day (observed)
-    "2026-09-07",  # Labor Day
-    "2026-11-26",  # Thanksgiving
-    "2026-12-25",  # Christmas
+# NYSE holidays (fixed + observed) by year. Extend each January or use a library.
+# Sources: https://www.nyse.com/markets/hours-calendars
+NYSE_HOLIDAYS: dict[int, set[str]] = {
+    2025: {
+        "2025-01-01",  # New Year's Day
+        "2025-01-20",  # MLK Jr. Day
+        "2025-02-17",  # Presidents' Day
+        "2025-04-18",  # Good Friday
+        "2025-05-26",  # Memorial Day
+        "2025-07-04",  # Independence Day
+        "2025-09-01",  # Labor Day
+        "2025-11-27",  # Thanksgiving
+        "2025-12-25",  # Christmas
+    },
+    2026: {
+        "2026-01-01",  # New Year's Day
+        "2026-01-19",  # MLK Jr. Day
+        "2026-02-16",  # Presidents' Day
+        "2026-04-03",  # Good Friday
+        "2026-05-25",  # Memorial Day
+        "2026-07-03",  # Independence Day (observed)
+        "2026-09-07",  # Labor Day
+        "2026-11-26",  # Thanksgiving
+        "2026-12-25",  # Christmas
+    },
+    2027: {
+        "2027-01-01",  # New Year's Day
+        "2027-01-18",  # MLK Jr. Day
+        "2027-02-15",  # Presidents' Day
+        "2027-03-26",  # Good Friday
+        "2027-05-31",  # Memorial Day
+        "2027-07-05",  # Independence Day (observed)
+        "2027-09-06",  # Labor Day
+        "2027-11-25",  # Thanksgiving
+        "2027-12-24",  # Christmas (observed)
+    },
 }
 
 
@@ -39,9 +63,11 @@ def _is_trading_day(d: datetime) -> bool:
     """Check if a given date is a NYSE trading day (not weekend or holiday)."""
     if d.weekday() > 4:
         return False
-    if d.year != 2026:
-        print(f"[market] ⚠️ NYSE holiday calendar only covers 2026, current year is {d.year}")
-    return d.strftime("%Y-%m-%d") not in NYSE_HOLIDAYS_2026
+    year_holidays = NYSE_HOLIDAYS.get(d.year)
+    if year_holidays is None:
+        print(f"[market] ⚠️ NYSE holiday calendar not available for {d.year}, treating all weekdays as trading days")
+        return True
+    return d.strftime("%Y-%m-%d") not in year_holidays
 
 
 def is_market_open() -> bool:
@@ -57,9 +83,11 @@ def is_market_open() -> bool:
 def get_last_trading_day() -> str:
     """Return the most recent trading day as YYYY-MM-DD."""
     now = datetime.now(ET)
-    # If before market close today, check if today is a trading day
+    # If today's session hasn't closed yet, step back to the previous day so we
+    # don't claim a day whose data isn't finalised.  Non-trading days are handled
+    # by the while loop below, so we only need the AND condition here.
     market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
-    if now < market_close or not _is_trading_day(now):
+    if _is_trading_day(now) and now < market_close:
         now -= timedelta(days=1)
     # Skip weekends and holidays
     while not _is_trading_day(now):

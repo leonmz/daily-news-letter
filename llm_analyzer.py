@@ -53,7 +53,7 @@ def build_analysis_prompt(movers: dict, news: dict) -> str:
         sections.append(f"\n## {label}")
         for m in movers.get(direction, []):
             ticker = m["ticker"]
-            sign = "+" if direction == "gainers" else ""
+            sign = "+" if m["change_pct"] >= 0 else ""
             sections.append(
                 f"\n**{ticker}** ({m.get('name', ticker)})"
                 f"\n  Price: ${m['price']:.2f} | Change: {sign}{m['change_pct']}%"
