@@ -122,16 +122,17 @@ def _clean_company_name(name: str) -> str:
 
 def _build_search_terms(ticker: str, company_name: str | None) -> list[tuple[str, bool]]:
     """Build search terms for a ticker. Returns [(pattern, is_substring), ...]."""
+    t = ticker.upper()
     terms = [
-        (f"${ticker}", False),
-        (f"({ticker})", False),
-        (f" {ticker} ", False),
+        (f"${t}", False),
+        (f"({t})", False),
+        (f" {t} ", False),
     ]
     if company_name:
         cleaned = _clean_company_name(company_name)
         # Only use name matching if name is meaningful (>= 6 chars or >= 2 words)
         if len(cleaned) >= 6 or len(cleaned.split()) >= 2:
-            terms.append((cleaned, True))
+            terms.append((cleaned.upper(), True))
     return terms
 
 
@@ -139,7 +140,7 @@ def _build_search_terms(ticker: str, company_name: str | None) -> list[tuple[str
 
 # Popular financial RSS feeds
 RSS_FEEDS = {
-    "reuters_markets": "https://www.rss.app/feeds/v1.1/tDBgmBJKNaJd3VvV.json",
+    "reuters_biz": "https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=best",
     "cnbc_top": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",
     "yahoo_finance": "https://finance.yahoo.com/news/rssindex",
     "marketwatch": "https://feeds.marketwatch.com/marketwatch/topstories/",
@@ -191,14 +192,9 @@ def fetch_news_rss(
         for article in all_articles:
             text = f" {article['title']} {article['description']} ".upper()
             for pattern, is_substring in search_terms:
-                if is_substring:
-                    if pattern.upper() in text:
-                        matches.append(article)
-                        break
-                else:
-                    if pattern.upper() in text:
-                        matches.append(article)
-                        break
+                if pattern in text:
+                    matches.append(article)
+                    break
             if len(matches) >= limit_per_ticker:
                 break
         if matches:
@@ -293,21 +289,21 @@ def get_news_for_movers(movers: dict, limit_per_ticker: int = 3) -> dict[str, li
     news = fetch_news_marketaux(all_tickers, limit_per_ticker)
 
     # Tier 2: RSS feeds (with company name matching)
-    missing = [t for t in all_tickers if t not in news or not news[t]]
+    missing = [t for t in all_tickers if not news.get(t)]
     if missing:
         print(f"[news] Filling {len(missing)} tickers via RSS...")
         rss_news = fetch_news_rss(missing, ticker_names, limit_per_ticker=limit_per_ticker)
         for t, articles in rss_news.items():
-            if t not in news:
+            if not news.get(t):
                 news[t] = articles
 
     # Tier 3: Google News RSS (per-ticker search)
-    still_missing = [t for t in all_tickers if t not in news or not news[t]]
+    still_missing = [t for t in all_tickers if not news.get(t)]
     if still_missing:
         print(f"[news] Searching Google News for {len(still_missing)} tickers...")
         google_news = fetch_news_google_rss(still_missing, ticker_names, limit_per_ticker)
         for t, articles in google_news.items():
-            if t not in news:
+            if not news.get(t):
                 news[t] = articles
 
     return news
