@@ -30,9 +30,9 @@
 | 语言 | Python 3.11+ | |
 | 市场数据 | Financial Modeling Prep (FMP) API | 免费 250 req/day，含 top gainers/losers + 板块 |
 | 市场数据备选 | yfinance | 无需 key，但 Screener 不够稳定 |
-| 新闻 | Marketaux API | 免费 100 req/day，按 ticker 过滤，自带 sentiment |
-| 新闻补充 | RSS (Reuters, CNBC, MarketWatch, SeekingAlpha) | 无限免费，用 ticker 关键词匹配 |
-| LLM 分析 | Anthropic Claude API (claude-sonnet-4) | 按 token 计费，每天一次调用成本极低 |
+| 新闻 | Google News RSS | 免费，按 ticker 搜索，无需 key |
+| 新闻补充 | Marketaux API（可选） | 免费 100 req/day，自带 sentiment |
+| LLM 分析 | Google Gemini API (gemini-2.5-flash) | 免费额度充裕，每天一次调用成本极低 |
 | 定时调度 | APScheduler (CronTrigger) | 10AM PT, Mon-Fri |
 | 推送 | Telegram Bot API | 免费，支持 Markdown 格式 |
 | 配置 | python-dotenv + .env | |
@@ -47,11 +47,11 @@
 [FMP API] ──→ Top 5 Gainers + Top 5 Losers
                     │
                     ▼
-[Marketaux API] ──→ 每个 ticker 拉 3 条相关新闻（含 sentiment）
-  + [RSS feeds]     缺失的用 RSS 关键词匹配补全
+[Marketaux API] ──→ 每个 ticker 拉新闻（可选，含 sentiment）
+  + [Google News]   缺失的用 Google News RSS 按 ticker 搜索补全
                     │
                     ▼
-[Claude API] ──→ 按板块分组，识别每只股票的核心催化剂
+[Gemini API] ──→ 按板块分组，识别每只股票的核心催化剂
                  (earnings / macro / product / analyst / M&A / regulatory)
                  输出 1-2 句 WHY 解释
                     │
