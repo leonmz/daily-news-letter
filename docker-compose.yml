@@ -3,5 +3,10 @@ services:
     build: .
     env_file:
       - .env
-    # Run once (default) — override with: docker compose run newsletter --schedule
-    # command: ["--schedule"]
+    command: ["--bot"]
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

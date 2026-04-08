@@ -7,6 +7,7 @@ Runs daily digest via JobQueue at 10AM PT.
 
 import asyncio
 import logging
+import signal
 from datetime import time as datetime_time
 from zoneinfo import ZoneInfo
 
@@ -240,4 +241,7 @@ def run_bot() -> None:
 
     print("Bot started - listening for commands + daily digest at 10AM PT")
     print("Press Ctrl+C to stop\n")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        stop_signals=(signal.SIGINT, signal.SIGTERM),
+    )
