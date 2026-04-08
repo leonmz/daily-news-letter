@@ -18,9 +18,26 @@ python main.py --test
 # 4. Run once (needs at least FMP key)
 python main.py
 
-# 5. Run on schedule (10AM PT daily)
+# 5. Run Telegram bot (commands + daily 10AM PT schedule)
+python main.py --bot
+
+# 6. Or schedule only (no command listener)
 python main.py --schedule
 ```
+
+## Bot commands
+
+When running with `--bot`, the Telegram bot responds to:
+
+| Command | Description |
+|---------|-------------|
+| `/start` | Welcome message |
+| `/help` | List available commands |
+| `/digest` | Generate full market digest on-demand |
+| `/movers` | Quick top movers summary (no LLM) |
+| `/watchlist` | Show current watchlist |
+| `/watchlist add TICKER` | Add ticker to watchlist |
+| `/watchlist remove TICKER` | Remove ticker |
 
 ## API keys you need
 
@@ -48,9 +65,11 @@ User Config (V2)                     →  ┘
 - `news_fetcher.py` — News fetcher (Marketaux + Google News RSS)
 - `llm_analyzer.py` — Gemini API integration for digest generation
 - `main.py` — Pipeline runner + scheduler
+- `telegram_bot.py` — Telegram bot command handlers + polling
 
 ## Roadmap
 
 - [x] MVP: daily 10AM digest
+- [x] Telegram bot: on-demand commands (/digest, /movers, /watchlist)
 - [ ] V2: sector watchlist + breaking news alerts
 - [ ] V2: individual stock follow + related news

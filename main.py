@@ -3,7 +3,8 @@ Daily Market Newsletter - Main Runner
 
 Usage:
     python main.py              # Run once (generate today's digest)
-    python main.py --schedule   # Run on schedule (10AM PT daily)
+    python main.py --bot        # Run Telegram bot (commands + daily schedule)
+    python main.py --schedule   # Run on schedule only (10AM PT daily)
     python main.py --test       # Dry run with mock data
 """
 
@@ -99,6 +100,35 @@ def generate_digest(limit: int = 10) -> str:
     return full_digest
 
 
+def format_for_telegram(text: str) -> list[str]:
+    """Convert markdown to Telegram HTML and split into chunks under 4000 chars."""
+    import re
+
+    html = text
+    # Convert Markdown bold **text** to HTML <b>text</b>
+    html = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html)
+    # Convert ## headers to bold lines
+    html = re.sub(r"^##\s*(.+)$", r"<b>\1</b>", html, flags=re.MULTILINE)
+
+    # Split on paragraph boundaries to avoid breaking HTML tags mid-tag
+    if len(html) <= 4000:
+        return [html] if html else [""]
+
+    chunks = []
+    current = ""
+    for paragraph in html.split("\n\n"):
+        candidate = (current + "\n\n" + paragraph) if current else paragraph
+        if len(candidate) > 4000:
+            if current:
+                chunks.append(current)
+            current = paragraph[:4000] if len(paragraph) > 4000 else paragraph
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks if chunks else [""]
+
+
 def send_telegram(text: str) -> bool:
     """Send digest via Telegram (if configured)."""
     from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
@@ -110,26 +140,14 @@ def send_telegram(text: str) -> bool:
     import requests
 
     try:
-        # Telegram has a 4096 char limit per message
-        # Split if needed
-        chunks = [text[i : i + 4000] for i in range(0, len(text), 4000)]
+        chunks = format_for_telegram(text)
 
         for chunk in chunks:
-            # Convert Markdown bold to HTML bold for Telegram
-            html_chunk = chunk.replace("**", "<b>", 1)
-            while "**" in html_chunk:
-                html_chunk = html_chunk.replace("**", "</b>", 1)
-                if "**" in html_chunk:
-                    html_chunk = html_chunk.replace("**", "<b>", 1)
-            # Convert ## headers to bold lines
-            import re
-            html_chunk = re.sub(r"^##\s*(.+)$", r"<b>\1</b>", html_chunk, flags=re.MULTILINE)
-
             resp = requests.post(
                 f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
                 json={
                     "chat_id": TELEGRAM_CHAT_ID,
-                    "text": html_chunk,
+                    "text": chunk,
                     "parse_mode": "HTML",
                     "disable_web_page_preview": True,
                 },
@@ -253,6 +271,7 @@ def run_deep_only(ticker: str):
 def main():
     parser = argparse.ArgumentParser(description="Daily Market Newsletter Bot")
     parser.add_argument("--schedule", action="store_true", help="Run on daily schedule (10AM PT)")
+    parser.add_argument("--bot", action="store_true", help="Run Telegram bot (commands + daily schedule)")
     parser.add_argument("--test", action="store_true", help="Dry run with mock data")
     parser.add_argument("--deep-only", metavar="TICKER", help="Run deep analysis on a single ticker")
     parser.add_argument("--limit", type=int, default=10, help="Number of movers (default: 10)")
@@ -262,6 +281,9 @@ def main():
         run_deep_only(args.deep_only.upper())
     elif args.test:
         run_test()
+    elif args.bot:
+        from telegram_bot import run_bot
+        run_bot()
     elif args.schedule:
         run_scheduled()
     else:

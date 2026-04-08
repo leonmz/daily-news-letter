@@ -223,7 +223,8 @@ Phase 3 danuglipron trial missed primary endpoint.
 - [x] 注册 API keys + 创建 Telegram Bot
 - [x] 端到端测试（10/10 tickers with news）
 - [x] Docker 部署支持
-- [ ] V1.5: 改进 top movers（市场时间校验 + 大盘股 + watchlist）
+- [x] V1.5: 改进 top movers（市场时间校验 + 大盘股 + watchlist）
+- [x] Telegram bot: 接收命令 (/digest, /movers, /watchlist add/remove)
 - [ ] V2 watchlist + breaking news
 
 ---
