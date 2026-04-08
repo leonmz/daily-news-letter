@@ -14,6 +14,11 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 # User watchlist (comma-separated tickers, max 10)
 WATCHLIST = [t.strip().upper() for t in os.getenv("WATCHLIST", "").split(",") if t.strip()][:10]
 
+# Deep Analysis (TradingAgents)
+DEEP_ANALYSIS_ENABLED = os.getenv("DEEP_ANALYSIS_ENABLED", "false").lower() == "true"
+DEEP_ANALYSIS_MAX_TICKERS = int(os.getenv("DEEP_ANALYSIS_MAX_TICKERS", "3"))
+DEEP_ANALYSIS_TIMEOUT = int(os.getenv("DEEP_ANALYSIS_TIMEOUT", "300"))
+
 # Top blue chip tickers by market cap
 TOP_BLUE_CHIPS = [
     "AAPL", "MSFT", "NVDA", "AMZN", "GOOG",
