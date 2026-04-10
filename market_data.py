@@ -288,7 +288,7 @@ def _fetch_tickers_daily(tickers: list[str], label: str) -> list[dict]:
 
 def fetch_blue_chips(min_change_pct: float = 1.0) -> list[dict]:
     """Fetch today's data for top blue chips, filtered by minimum change %."""
-    print(f"[market] Fetching blue chip data...")
+    print("[market] Fetching blue chip data...")
     all_data = _fetch_tickers_daily(TOP_BLUE_CHIPS, "blue-chips")
     # Filter to significant movers only
     significant = [d for d in all_data if abs(d["change_pct"]) >= min_change_pct]

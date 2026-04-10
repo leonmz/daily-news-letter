@@ -166,7 +166,7 @@ async def cmd_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     try:
         digest = await asyncio.to_thread(generate_digest)
         await _send_digest_with_button(update.effective_chat.id, digest, context)
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to generate digest")
         await update.message.reply_text("Failed to generate digest. Check bot logs.")
 
@@ -198,7 +198,7 @@ async def cmd_movers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         text = "\n".join(lines) if lines else "No movers data available."
         await update.message.reply_text(text, parse_mode="HTML")
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to fetch movers")
         await update.message.reply_text("Failed to fetch movers. Check bot logs.")
 

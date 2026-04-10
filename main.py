@@ -57,7 +57,7 @@ def generate_digest(limit: int = 10) -> str:
 
     # Step 2: Fetch news
     total_tickers = gainers_count + losers_count + extra_count
-    print(f"[2/6] Fetching related news...")
+    print("[2/6] Fetching related news...")
     news = get_news_for_movers(movers, limit_per_ticker=3)
     tickers_with_news = len([t for t, a in news.items() if a])
     print(f"      Found news for {tickers_with_news}/{total_tickers} tickers")

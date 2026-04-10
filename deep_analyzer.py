@@ -201,7 +201,7 @@ def _summarize_report(report: str, max_len: int = 150) -> str:
     if not report:
         return "N/A"
     # Take first meaningful non-header line
-    lines = [l.strip() for l in report.strip().split("\n") if l.strip()]
+    lines = [ln.strip() for ln in report.strip().split("\n") if ln.strip()]
     summary = ""
     for line in lines:
         # Skip headers, dividers, labels

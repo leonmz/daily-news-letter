@@ -41,7 +41,8 @@ def test_filter_movers_unknown_cap_passes():
 
 # F2-3: Config thresholds read from env vars
 def test_config_thresholds_from_env():
-    import os, importlib
+    import os
+    import importlib
     os.environ["MOVER_MIN_MARKET_CAP_B"] = "5.0"
     os.environ["MOVER_MIN_VOLUME"] = "5000000"
     import config

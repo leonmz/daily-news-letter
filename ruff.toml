@@ -1,0 +1,5 @@
+line-length = 120
+
+[lint]
+# E501 is redundant with line-length; F401 unused-import fires on wildcard re-exports
+ignore = ["E501", "F401"]

@@ -17,7 +17,28 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
-      - name: Run tests
-        run: python -m pytest -v
+      - name: Lint with ruff
+        run: ruff check .
+
+      - name: Type check with mypy
+        continue-on-error: true
+        run: mypy --ignore-missing-imports .
+
+      - name: Import health check
+        run: |
+          python -c "import config; import market_data; import llm_analyzer; import news_fetcher; import telegram_bot"
+
+      - name: Run tests with coverage
+        run: python -m pytest --cov=. --cov-report=term-missing --cov-fail-under=30 -v
+
+      - name: Secrets leak detection
+        continue-on-error: true
+        run: detect-secrets scan --list-all-secrets
+
+      - name: Dependency security audit
+        continue-on-error: true
+        run: pip-audit
