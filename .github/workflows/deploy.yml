@@ -29,7 +29,7 @@ jobs:
             --strict-host-key-checking=no \
             --command="
               set -euo pipefail
-              cd ~/newsletter
+              cd /home/leon/newsletter
               git pull
               docker build -t newsletter-bot .
               docker stop newsletter-bot 2>/dev/null || true
