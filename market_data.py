@@ -13,7 +13,8 @@ from zoneinfo import ZoneInfo
 import requests
 import yfinance as yf
 
-from config import FMP_API_KEY, FMP_BASE, SECTOR_MAP, TOP_BLUE_CHIPS, WATCHLIST
+import config as _config
+from config import FMP_API_KEY, FMP_BASE, SECTOR_MAP, TOP_BLUE_CHIPS, WATCHLIST, MOVER_MIN_MARKET_CAP_B, MOVER_MIN_VOLUME
 
 
 # ── Market hours check ────────────────────────────────────────
@@ -98,8 +99,16 @@ def get_last_trading_day() -> str:
 # ── FMP top movers ────────────────────────────────────────────
 
 def fetch_top_movers_fmp(limit: int = 10) -> dict:
-    """Fetch top gainers and losers from FMP."""
+    """Fetch top gainers and losers from FMP.
+
+    Fetches extra candidates so we have enough after volume filtering.
+    Market-cap filtering happens later in filter_movers_by_size() once
+    enrich_sector_info() has populated the market_cap field.
+    """
     result = {"gainers": [], "losers": []}
+    want = limit // 2
+    # Fetch 4x candidates so volume filtering still leaves enough results
+    candidates = max(want * 4, 40)
 
     for direction in ["gainers", "losers"]:
         url = f"{FMP_BASE}/stock_market/{direction}"
@@ -109,7 +118,12 @@ def fetch_top_movers_fmp(limit: int = 10) -> dict:
             resp.raise_for_status()
             data = resp.json()
 
-            for item in data[: limit // 2]:
+            kept = 0
+            for item in data[:candidates]:
+                volume = item.get("volume", 0) or 0
+                if volume < _config.MOVER_MIN_VOLUME:
+                    continue  # skip low-volume tickers
+
                 ticker = item.get("symbol", "")
                 sector_raw = item.get("sector", "")
                 sector = SECTOR_MAP.get(sector_raw, sector_raw.lower())
@@ -121,11 +135,15 @@ def fetch_top_movers_fmp(limit: int = 10) -> dict:
                         "price": item.get("price", 0),
                         "change_pct": round(item.get("changesPercentage", 0), 2),
                         "change_abs": round(item.get("change", 0), 2),
-                        "volume": item.get("volume", 0),
+                        "volume": volume,
                         "sector": sector,
                         "sector_raw": sector_raw,
+                        "market_cap": None,  # populated later by enrich_sector_info
                     }
                 )
+                kept += 1
+                if kept >= want:
+                    break
         except Exception as e:
             print(f"[FMP] Error fetching {direction}: {e}")
 
@@ -135,21 +153,39 @@ def fetch_top_movers_fmp(limit: int = 10) -> dict:
 # ── yfinance top movers ───────────────────────────────────────
 
 def fetch_top_movers_yfinance(limit: int = 10) -> dict:
-    """Fallback: fetch top movers via yfinance screen()."""
+    """Fallback: fetch top movers via yfinance screen().
+
+    Filters by MOVER_MIN_VOLUME and MOVER_MIN_MARKET_CAP_B immediately
+    since yfinance info includes marketCap.
+    """
     result = {"gainers": [], "losers": []}
+    want = limit // 2
+    # Fetch extra candidates so filtering still yields enough
+    candidates = max(want * 4, 40)
+    min_cap = _config.MOVER_MIN_MARKET_CAP_B * 1_000_000_000
 
     for direction, key in [("gainers", "day_gainers"), ("losers", "day_losers")]:
         try:
-            data = yf.screen(key, count=limit // 2)
+            data = yf.screen(key, count=candidates)
             quotes = data.get("quotes", [])
 
-            for q in quotes[: limit // 2]:
+            kept = 0
+            for q in quotes[:candidates]:
+                volume = q.get("regularMarketVolume", 0) or 0
+                if volume < _config.MOVER_MIN_VOLUME:
+                    continue
+
                 ticker = q.get("symbol", "")
                 try:
                     info = yf.Ticker(ticker).info
                     sector_raw = info.get("sector", "Unknown")
+                    market_cap = info.get("marketCap") or 0
                 except Exception:
                     sector_raw = "Unknown"
+                    market_cap = 0
+
+                if min_cap > 0 and market_cap > 0 and market_cap < min_cap:
+                    continue
 
                 sector = SECTOR_MAP.get(sector_raw, sector_raw.lower())
                 result[direction].append(
@@ -157,17 +193,17 @@ def fetch_top_movers_yfinance(limit: int = 10) -> dict:
                         "ticker": ticker,
                         "name": q.get("shortName", ticker),
                         "price": q.get("regularMarketPrice", 0),
-                        "change_pct": round(
-                            q.get("regularMarketChangePercent", 0), 2
-                        ),
-                        "change_abs": round(
-                            q.get("regularMarketChange", 0), 2
-                        ),
-                        "volume": q.get("regularMarketVolume", 0),
+                        "change_pct": round(q.get("regularMarketChangePercent", 0), 2),
+                        "change_abs": round(q.get("regularMarketChange", 0), 2),
+                        "volume": volume,
                         "sector": sector,
                         "sector_raw": sector_raw,
+                        "market_cap": market_cap,
                     }
                 )
+                kept += 1
+                if kept >= want:
+                    break
         except Exception as e:
             print(f"[yfinance] Error fetching {direction}: {e}")
 
@@ -292,17 +328,23 @@ def get_top_movers(limit: int = 10) -> dict:
 
 
 def enrich_sector_info(movers: dict) -> dict:
-    """Add sector info for any movers missing it (batch lookup via FMP)."""
-    tickers_needing_sector = []
-    for direction in ["gainers", "losers"]:
-        for m in movers[direction]:
-            if not m.get("sector") or m["sector"] == "unknown":
-                tickers_needing_sector.append(m["ticker"])
+    """Add sector and market_cap info for movers via FMP profile (batch lookup).
 
-    if not tickers_needing_sector or not FMP_API_KEY:
+    Triggers for any gainer/loser that is missing sector OR market_cap so that
+    filter_movers_by_size() can apply the market-cap threshold after this call.
+    """
+    tickers_needing_profile = []
+    for direction in ["gainers", "losers"]:
+        for m in movers.get(direction, []):
+            missing_sector = not m.get("sector") or m["sector"] == "unknown"
+            missing_cap = m.get("market_cap") is None
+            if missing_sector or missing_cap:
+                tickers_needing_profile.append(m["ticker"])
+
+    if not tickers_needing_profile or not FMP_API_KEY:
         return movers
 
-    tickers_str = ",".join(tickers_needing_sector[:20])
+    tickers_str = ",".join(tickers_needing_profile[:20])
     try:
         url = f"{FMP_BASE}/profile/{tickers_str}"
         resp = requests.get(url, params={"apikey": FMP_API_KEY}, timeout=15)
@@ -310,14 +352,53 @@ def enrich_sector_info(movers: dict) -> dict:
         profiles = {p["symbol"]: p for p in resp.json()}
 
         for direction in ["gainers", "losers"]:
-            for m in movers[direction]:
+            for m in movers.get(direction, []):
                 if m["ticker"] in profiles:
-                    sector_raw = profiles[m["ticker"]].get("sector", "")
+                    p = profiles[m["ticker"]]
+                    sector_raw = p.get("sector", "")
                     m["sector_raw"] = sector_raw
                     m["sector"] = SECTOR_MAP.get(sector_raw, sector_raw.lower())
+                    if m.get("market_cap") is None:
+                        m["market_cap"] = p.get("mktCap") or 0
     except Exception as e:
-        print(f"[market] Sector enrichment failed: {e}")
+        print(f"[market] Profile enrichment failed: {e}")
 
+    return movers
+
+
+def filter_movers_by_size(movers: dict) -> dict:
+    """Remove gainers/losers below the configured market-cap or volume thresholds.
+
+    Thresholds (from config / env):
+      MOVER_MIN_MARKET_CAP_B  – minimum market cap in billions (default 10)
+      MOVER_MIN_VOLUME        – minimum daily volume (default 10_000_000)
+
+    Reads thresholds from config at call-time so that test overrides of
+    config.MOVER_MIN_MARKET_CAP_B / config.MOVER_MIN_VOLUME take effect
+    without reloading the market_data module.
+    """
+    min_cap_b = _config.MOVER_MIN_MARKET_CAP_B
+    min_vol = _config.MOVER_MIN_VOLUME
+    min_cap = min_cap_b * 1_000_000_000
+
+    def _passes(m: dict) -> bool:
+        volume = m.get("volume") or 0
+        if min_vol > 0 and volume < min_vol:
+            return False
+        market_cap = m.get("market_cap") or 0
+        if min_cap > 0 and market_cap > 0 and market_cap < min_cap:
+            return False
+        return True
+
+    before = sum(len(movers.get(d, [])) for d in ["gainers", "losers"])
+    for direction in ["gainers", "losers"]:
+        original = movers.get(direction, [])
+        movers[direction] = [m for m in original if _passes(m)]
+    after = sum(len(movers.get(d, [])) for d in ["gainers", "losers"])
+    if before != after:
+        print(f"[market] Small-cap filter: {before} → {after} movers "
+              f"(removed {before - after} below ${min_cap_b:.0f}B cap "
+              f"/ {min_vol // 1_000_000}M vol)")
     return movers
 
 
