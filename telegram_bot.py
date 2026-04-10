@@ -103,7 +103,7 @@ async def _send_digest_with_button(
     compact_message = f"{safe_header}\n\n{safe_compact}"
 
     keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("📊 查看完整分析", callback_data="show_full_analysis")]]
+        [[InlineKeyboardButton("📊 View Full Analysis", callback_data="show_full_analysis")]]
     )
 
     await context.bot.send_message(
