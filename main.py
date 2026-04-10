@@ -13,7 +13,7 @@ import sys
 from datetime import datetime
 
 from config import DEEP_ANALYSIS_ENABLED, DEEP_ANALYSIS_MAX_TICKERS, DEEP_ANALYSIS_TIMEOUT
-from market_data import get_top_movers, enrich_sector_info, fetch_blue_chips, fetch_watchlist, get_last_trading_day, is_market_open
+from market_data import get_top_movers, enrich_sector_info, filter_movers_by_size, fetch_blue_chips, fetch_watchlist, get_last_trading_day, is_market_open
 from news_fetcher import get_news_for_movers
 from llm_analyzer import analyze_movers
 
@@ -28,6 +28,7 @@ def generate_digest(limit: int = 10) -> str:
     print("[1/6] Fetching top movers...")
     movers = get_top_movers(limit)
     movers = enrich_sector_info(movers)
+    movers = filter_movers_by_size(movers)
 
     gainers_count = len(movers.get("gainers", []))
     losers_count = len(movers.get("losers", []))
@@ -127,6 +128,33 @@ def format_for_telegram(text: str) -> list[str]:
     if current:
         chunks.append(current)
     return chunks if chunks else [""]
+
+
+def format_compact_summary(digest: str) -> str:
+    """Parse full LLM digest into compact one-line-per-ticker format.
+
+    Extracts lines matching the SYSTEM_PROMPT pattern:
+        ### ▲ TICKER (+X.XX%) $XXX.XX | Vol: XXM — Catalyst type
+
+    Returns lines like:
+        ▲ NVDA +8.5% | GPU demand surge on data center contracts
+        ▼ XOM -3.2% | Falling oil prices on OPEC output increase
+
+    Returns empty string if no matching lines are found.
+    """
+    import re
+
+    pattern = re.compile(
+        r"^#{2,3}\s*(▲|▼)\s+([A-Z][A-Z0-9.\-]{0,8})\s+\(([+-]?\d+\.?\d*)%\)[^\n]*?—\s*(.+?)$",
+        re.MULTILINE,
+    )
+    lines = []
+    for m in pattern.finditer(digest):
+        arrow, ticker, pct, catalyst = m.groups()
+        sign = "+" if not pct.startswith("-") and not pct.startswith("+") else ""
+        lines.append(f"{arrow} {ticker} {sign}{pct}% | {catalyst.strip()}")
+
+    return "\n".join(lines)
 
 
 def send_telegram(text: str) -> bool:

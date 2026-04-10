@@ -14,6 +14,10 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 # User watchlist (comma-separated tickers, max 10)
 WATCHLIST = [t.strip().upper() for t in os.getenv("WATCHLIST", "").split(",") if t.strip()][:10]
 
+# Top movers filtering (exclude small caps)
+MOVER_MIN_MARKET_CAP_B = float(os.getenv("MOVER_MIN_MARKET_CAP_B", "10.0"))  # $10B minimum market cap
+MOVER_MIN_VOLUME = int(os.getenv("MOVER_MIN_VOLUME", "10000000"))  # 10M minimum daily volume
+
 # Deep Analysis (TradingAgents)
 DEEP_ANALYSIS_ENABLED = os.getenv("DEEP_ANALYSIS_ENABLED", "false").lower() == "true"
 DEEP_ANALYSIS_MAX_TICKERS = int(os.getenv("DEEP_ANALYSIS_MAX_TICKERS", "3"))
