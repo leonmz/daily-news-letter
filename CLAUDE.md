@@ -25,8 +25,18 @@
 Simplified to 2-tier: Marketaux (optional) + Google News RSS (primary).
 Dropped RSS — Google News per-ticker search achieves 10/10 coverage.
 
+### ~~Branch: `feature/compact-digest-market-cap-filter`~~ (DONE — merged in PR #8)
+Small-cap filter for top movers + compact Telegram digest with InlineKeyboard button.
+
 ### Branch: `feature/telegram-receive-messages`
 Receive messages from Telegram bot:
 - Handle incoming user commands via Telegram webhook or polling
 - Support on-demand digest requests (e.g., `/digest`, `/movers`)
 - Respond to user queries through the bot
+
+## Known Issues (from QA — see GitHub Issues)
+
+- **#9 (bug):** Misleading "no market data" error when `filter_movers_by_size` removes all movers. Fix: check `gainers`/`losers` counts *after* filtering and show a filter-specific message.
+- **#10 (bug):** `format_compact_summary` shows `+0.0%` for flat stocks. Fix: use `float(pct) > 0` instead of `not pct.startswith("-")` for sign logic.
+- **#11 (enhancement):** CLI path (`python main.py` without `--bot`) uses old multi-chunk `send_telegram`, not the compact + InlineKeyboard format. Needs unification.
+- **#12 (bug, pre-existing):** `format_for_telegram` silently truncates input with no `\n\n` breaks longer than 4000 chars. Low real-world risk (LLM output always has breaks) but latent data-loss bug.
