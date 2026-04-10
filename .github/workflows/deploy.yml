@@ -29,6 +29,7 @@ jobs:
             --strict-host-key-checking=no \
             --command="
               set -euo pipefail
+              git config --global --add safe.directory /opt/newsletter
               cd /opt/newsletter
               git pull
               sudo docker build -t newsletter-bot .
