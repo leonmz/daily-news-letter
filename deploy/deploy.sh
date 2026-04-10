@@ -5,7 +5,7 @@ set -euo pipefail
 
 VM_NAME="${1:-newsletter-bot}"
 ZONE="${2:-us-central1-a}"
-APP_DIR="${3:-/home/leon/newsletter}"
+APP_DIR="${3:-/opt/newsletter}"
 
 echo "=== Deploying to $VM_NAME ($ZONE) ==="
 

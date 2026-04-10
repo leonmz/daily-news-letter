@@ -29,12 +29,12 @@ jobs:
             --strict-host-key-checking=no \
             --command="
               set -euo pipefail
-              cd /home/leon/newsletter
+              cd /opt/newsletter
               git pull
-              docker build -t newsletter-bot .
-              docker stop newsletter-bot 2>/dev/null || true
-              docker rm newsletter-bot 2>/dev/null || true
-              docker run -d \
+              sudo docker build -t newsletter-bot .
+              sudo docker stop newsletter-bot 2>/dev/null || true
+              sudo docker rm newsletter-bot 2>/dev/null || true
+              sudo docker run -d \
                 --name newsletter-bot \
                 --restart unless-stopped \
                 --env-file .env \
@@ -42,6 +42,6 @@ jobs:
                 --log-opt max-file=3 \
                 newsletter-bot --bot
               sleep 5
-              docker ps --filter name=newsletter-bot
-              docker logs --tail=10 newsletter-bot
+              sudo docker ps --filter name=newsletter-bot
+              sudo docker logs --tail=10 newsletter-bot
             "
