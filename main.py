@@ -133,26 +133,32 @@ def format_for_telegram(text: str) -> list[str]:
 def format_compact_summary(digest: str) -> str:
     """Parse full LLM digest into compact one-line-per-ticker format.
 
-    Extracts lines matching the SYSTEM_PROMPT pattern:
+    Handles both the old format:
         ### ▲ TICKER (+X.XX%) $XXX.XX | Vol: XXM — Catalyst type
+    and the new format with company name:
+        ### ▲ TICKER (Company Name) (+X.XX%) $XXX.XX | Vol: XXM — Catalyst type
 
     Returns lines like:
-        ▲ NVDA +8.5% | GPU demand surge on data center contracts
-        ▼ XOM -3.2% | Falling oil prices on OPEC output increase
+        ▲ NVDA (NVIDIA) +8.5% | GPU demand surge on data center contracts
+        ▼ XOM (Exxon) -3.2% | Falling oil prices on OPEC output increase
 
     Returns empty string if no matching lines are found.
     """
     import re
 
     pattern = re.compile(
-        r"^#{2,3}\s*(▲|▼)\s+([A-Z][A-Z0-9.\-]{0,8})\s+\(([+-]?\d+\.?\d*)%\)[^\n]*?—\s*(.+?)$",
+        r"^#{2,3}\s*(▲|▼)\s+([A-Z][A-Z0-9.\-]{0,8})"
+        r"(?:\s+\(([^)]+)\))?"        # optional (Company Name)
+        r"\s+\(([+-]?\d+\.?\d*)%\)"   # (+X.XX%)
+        r"[^\n]*?—\s*(.+?)$",
         re.MULTILINE,
     )
     lines = []
     for m in pattern.finditer(digest):
-        arrow, ticker, pct, catalyst = m.groups()
+        arrow, ticker, company, pct, catalyst = m.groups()
         sign = "+" if not pct.startswith("-") and not pct.startswith("+") else ""
-        lines.append(f"{arrow} {ticker} {sign}{pct}% | {catalyst.strip()}")
+        company_part = f" ({company})" if company else ""
+        lines.append(f"{arrow} {ticker}{company_part} {sign}{pct}% | {catalyst.strip()}")
 
     return "\n".join(lines)
 

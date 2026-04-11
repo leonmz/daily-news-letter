@@ -29,13 +29,13 @@ Output format (use exactly this structure):
 [2-3 sentences on overall market tone today]
 
 ## [Sector emoji + name]
-### ▲ TICKER (+X.XX%) $XXX.XX | Vol: XXM — Catalyst type
+### ▲ TICKER (Company Name) (+X.XX%) $XXX.XX | Vol: XXM — Catalyst type
 [1-2 sentence explanation]
 
-### ▼ TICKER (-X.XX%) $XXX.XX | Vol: XXM — Catalyst type
+### ▼ TICKER (Company Name) (-X.XX%) $XXX.XX | Vol: XXM — Catalyst type
 [1-2 sentence explanation]
 
-Always include the current price and volume (in millions, e.g. "Vol: 85M") in each mover line.
+Always include the company name, current price and volume (in millions, e.g. "Vol: 85M") in each mover line.
 Keep it crisp. No fluff. No disclaimers. The reader is sophisticated."""
 
 
@@ -136,14 +136,21 @@ def _fallback_summary(movers: dict, news: dict) -> str:
     """Simple template-based summary when LLM is unavailable."""
     lines = ["## Market movers (no LLM analysis)\n"]
 
+    def _mover_line(m: dict) -> str:
+        arrow = "▲" if m["change_pct"] >= 0 else "▼"
+        sign = "+" if m["change_pct"] >= 0 else ""
+        vol = _format_volume(m.get("volume"))
+        name = m.get("name", m["ticker"])
+        return (
+            f"{arrow} **{m['ticker']}** ({name}) ({sign}{m['change_pct']}%)"
+            f" ${m['price']:.2f} | Vol: {vol}"
+        )
+
     # Blue chips section
     if movers.get("blue_chips"):
         lines.append("\n### 📈 Blue Chip Movers")
         for m in movers["blue_chips"]:
-            sign = "+" if m["change_pct"] >= 0 else ""
-            arrow = "▲" if m["change_pct"] >= 0 else "▼"
-            vol = _format_volume(m.get("volume"))
-            lines.append(f"{arrow} **{m['ticker']}** ({sign}{m['change_pct']}%) ${m['price']:.2f} | Vol: {vol}")
+            lines.append(_mover_line(m))
             ticker_news = news.get(m["ticker"], [])
             if ticker_news:
                 lines.append(f"  → {ticker_news[0]['title'][:100]}")
@@ -152,10 +159,7 @@ def _fallback_summary(movers: dict, news: dict) -> str:
     if movers.get("watchlist"):
         lines.append("\n### 👀 Your Holdings")
         for m in movers["watchlist"]:
-            sign = "+" if m["change_pct"] >= 0 else ""
-            arrow = "▲" if m["change_pct"] >= 0 else "▼"
-            vol = _format_volume(m.get("volume"))
-            lines.append(f"{arrow} **{m['ticker']}** ({sign}{m['change_pct']}%) ${m['price']:.2f} | Vol: {vol}")
+            lines.append(_mover_line(m))
             ticker_news = news.get(m["ticker"], [])
             if ticker_news:
                 lines.append(f"  → {ticker_news[0]['title'][:100]}")
@@ -173,13 +177,7 @@ def _fallback_summary(movers: dict, news: dict) -> str:
         display = SECTOR_DISPLAY.get(sector, sector.title())
         lines.append(f"\n### {display}")
         for m in items:
-            arrow = "▲" if m["direction"] == "gainers" else "▼"
-            sign = "+" if m["direction"] == "gainers" else ""
-            vol = _format_volume(m.get("volume"))
-            lines.append(
-                f"{arrow} **{m['ticker']}** ({sign}{m['change_pct']}%)"
-                f" ${m['price']:.2f} | Vol: {vol}"
-            )
+            lines.append(_mover_line(m))
             ticker_news = news.get(m["ticker"], [])
             if ticker_news:
                 lines.append(f"  → {ticker_news[0]['title'][:100]}")

@@ -2,7 +2,8 @@
 Fetch news for given tickers / sectors.
 
 Tier 1: Marketaux API (optional, free tier: 100 req/day, provides sentiment)
-Tier 2: Google News RSS (primary workhorse, free, per-ticker search)
+Tier 2: yfinance Ticker.news (free, no API key, near-real-time)
+Tier 3: Google News RSS (broadest coverage, free, per-ticker search)
 """
 
 import re
@@ -13,6 +14,7 @@ from typing import Optional
 
 import feedparser
 import requests
+import yfinance as yf
 
 from config import MARKETAUX_API_KEY, MARKETAUX_BASE
 
@@ -160,7 +162,7 @@ def fetch_news_google(
 
                 articles.append({
                     "title": title,
-                    "description": entry.get("summary", ""),
+                    "description": re.sub(r"<[^>]+>", "", entry.get("summary", "")).strip(),
                     "url": entry.get("link", ""),
                     "source": source,
                     "published_at": entry.get("published", ""),
@@ -179,13 +181,67 @@ def fetch_news_google(
     return result
 
 
+# ── yfinance news (tier 2 fallback) ───────────────────────────
+
+def fetch_news_yfinance(
+    tickers: list[str],
+    limit_per_ticker: int = 3,
+) -> dict[str, list[dict]]:
+    """
+    Fetch news via yfinance Ticker.news for a list of tickers.
+    Returns {ticker: [article, ...]}
+
+    yfinance news dicts contain: title, publisher, link,
+    providerPublishTime (unix ts), relatedTickers, type.
+    """
+    result = {}
+    for ticker in tickers:
+        try:
+            raw = yf.Ticker(ticker).news or []
+            articles = []
+            for item in raw:
+                # Skip non-story entries (e.g. type=="VIDEO" is fine, but skip empties)
+                title = item.get("title", "").strip()
+                if not title:
+                    continue
+
+                # Convert unix timestamp to ISO date string
+                ts = item.get("providerPublishTime")
+                published_at = (
+                    datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    if ts
+                    else ""
+                )
+
+                articles.append({
+                    "title": title,
+                    "description": "",  # yfinance news has no body text
+                    "url": item.get("link", ""),
+                    "source": item.get("publisher", "yfinance").lower(),
+                    "published_at": published_at,
+                    "sentiment": None,
+                })
+                if len(articles) >= limit_per_ticker:
+                    break
+
+            if articles:
+                result[ticker] = articles
+                print(f"[yfinance-news] {ticker}: {len(articles)} articles")
+
+        except Exception as e:
+            print(f"[yfinance-news] Error for {ticker}: {e}")
+
+    return result
+
+
 # ── Unified interface ──────────────────────────────────────────
 
 def get_news_for_movers(movers: dict, limit_per_ticker: int = 3) -> dict[str, list[dict]]:
     """
-    Get news for all movers. 2-tier waterfall:
+    Get news for all movers. 3-tier waterfall:
     1. Marketaux (optional, if API key set — provides sentiment scores)
-    2. Google News RSS (primary, per-ticker search, free)
+    2. yfinance Ticker.news (free, no key, near-real-time)
+    3. Google News RSS (broadest coverage, free, per-ticker search)
     """
     all_tickers = []
     ticker_names = {}
@@ -198,7 +254,16 @@ def get_news_for_movers(movers: dict, limit_per_ticker: int = 3) -> dict[str, li
     # Tier 1: Marketaux (optional)
     news = fetch_news_marketaux(all_tickers, limit_per_ticker)
 
-    # Tier 2: Google News RSS (primary)
+    # Tier 2: yfinance news (free fallback)
+    missing = [t for t in all_tickers if not news.get(t)]
+    if missing:
+        print(f"[news] Trying yfinance news for {len(missing)} tickers...")
+        yf_news = fetch_news_yfinance(missing, limit_per_ticker)
+        for t, articles in yf_news.items():
+            if not news.get(t):
+                news[t] = articles
+
+    # Tier 3: Google News RSS (final fallback)
     missing = [t for t in all_tickers if not news.get(t)]
     if missing:
         print(f"[news] Searching Google News for {len(missing)} tickers...")
