@@ -29,9 +29,14 @@ jobs:
             --strict-host-key-checking=no \
             --command="
               set -euo pipefail
+              # Use reset --hard instead of git pull: guarantees the VM always
+              # matches origin/main exactly, even if files were manually edited
+              # on the VM (which would cause 'git pull' to abort with conflicts).
+              sudo chown -R \$(whoami) /opt/newsletter/.git
               git config --global --add safe.directory /opt/newsletter
               cd /opt/newsletter
-              git pull
+              git fetch origin
+              git reset --hard origin/main
               sudo docker build -t newsletter-bot .
               sudo docker stop newsletter-bot 2>/dev/null || true
               sudo docker rm newsletter-bot 2>/dev/null || true

@@ -11,9 +11,15 @@ echo "=== Deploying to $VM_NAME ($ZONE) ==="
 
 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command="
   set -euo pipefail
+  # Use reset --hard instead of git pull: guarantees the VM always matches
+  # origin/main exactly, even if files were manually edited on the VM
+  # (which would cause 'git pull' to abort with conflicts).
+  sudo chown -R \$(whoami) $APP_DIR/.git
+  git config --global --add safe.directory $APP_DIR
   cd $APP_DIR
-  echo '--- Pulling latest code ---'
-  git pull
+  echo '--- Resetting to latest main ---'
+  git fetch origin
+  git reset --hard origin/main
 
   echo '--- Building Docker image ---'
   docker build -t newsletter-bot .
