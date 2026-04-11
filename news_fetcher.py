@@ -199,7 +199,7 @@ def fetch_news_yfinance(
         try:
             raw = yf.Ticker(ticker).news or []
             articles = []
-            for item in raw[:limit_per_ticker]:
+            for item in raw:
                 # Skip non-story entries (e.g. type=="VIDEO" is fine, but skip empties)
                 title = item.get("title", "").strip()
                 if not title:
@@ -221,6 +221,8 @@ def fetch_news_yfinance(
                     "published_at": published_at,
                     "sentiment": None,
                 })
+                if len(articles) >= limit_per_ticker:
+                    break
 
             if articles:
                 result[ticker] = articles
