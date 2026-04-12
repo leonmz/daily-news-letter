@@ -39,11 +39,11 @@ class AlpacaProvider:
             )
         return self._stock_client
 
-    def _get_broker_client(self):
-        """Trading client used for screener endpoints."""
+    def _get_news_client(self):
+        """News client — separate from stock data client."""
         if self._news_client is None:
-            from alpaca.data.historical import StockHistoricalDataClient
-            self._news_client = StockHistoricalDataClient(
+            from alpaca.data.historical import NewsClient
+            self._news_client = NewsClient(
                 api_key=self._api_key, secret_key=self._secret_key
             )
         return self._news_client
@@ -226,12 +226,13 @@ class AlpacaProvider:
     async def get_news(self, ticker: str, limit: int = 10) -> list[NewsArticle]:
         """Fetch Benzinga news articles for a specific ticker via Alpaca."""
         try:
-            from alpaca.data.historical import StockHistoricalDataClient
             from alpaca.data.requests import NewsRequest
 
-            client = self._get_stock_client()
+            client = self._get_news_client()
             req = NewsRequest(symbols=ticker, limit=limit, sort="desc")
-            news = client.get_news(req)
+            news_set = client.get_news(req)
+            # NewsSet wraps results in .data['news']
+            news = news_set.data.get("news", []) if hasattr(news_set, "data") else list(news_set)
 
             articles = []
             for item in (news or []):
@@ -258,12 +259,12 @@ class AlpacaProvider:
     async def get_market_news(self, limit: int = 20) -> list[NewsArticle]:
         """Fetch broad market news (no specific ticker)."""
         try:
-            from alpaca.data.historical import StockHistoricalDataClient
             from alpaca.data.requests import NewsRequest
 
-            client = self._get_stock_client()
+            client = self._get_news_client()
             req = NewsRequest(limit=limit, sort="desc")
-            news = client.get_news(req)
+            news_set = client.get_news(req)
+            news = news_set.data.get("news", []) if hasattr(news_set, "data") else list(news_set)
 
             articles = []
             for item in (news or []):

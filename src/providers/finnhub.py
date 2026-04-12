@@ -144,7 +144,10 @@ class FinnhubProvider:
             }
 
         except Exception as e:
-            logger.error("Finnhub get_recommendations(%s) failed: %s", ticker, e)
+            if "403" in str(e):
+                logger.info("Finnhub get_recommendations(%s): requires paid plan (403)", ticker)
+            else:
+                logger.error("Finnhub get_recommendations(%s) failed: %s", ticker, e)
             return None
 
     async def get_news(self, ticker: str, limit: int = 10) -> list[NewsArticle]:

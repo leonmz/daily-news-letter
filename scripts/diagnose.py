@@ -157,7 +157,7 @@ async def check_finnhub():
     else:
         check("Earnings calendar", False, err2 or "no data")
 
-    # Analyst ratings NVDA
+    # Analyst ratings NVDA (requires paid Finnhub plan — skip gracefully on 403)
     rec, elapsed3, err3 = await timed(p.get_recommendations("NVDA"))
     if rec:
         total = rec.get("total_analysts", 0)
@@ -165,7 +165,7 @@ async def check_finnhub():
         target_str = f"avg target ${target:.0f}" if target else "no target"
         check("Analyst ratings NVDA", True, f"{total} analysts, {target_str} ({elapsed3:.0f}s)")
     else:
-        check("Analyst ratings NVDA", False, err3 or "no data")
+        check("Analyst ratings NVDA", False, skipped=True)  # requires paid Finnhub plan (free tier = 403)
 
     # News NVDA
     news, elapsed4, err4 = await timed(p.get_news("NVDA", 5))
