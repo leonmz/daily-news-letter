@@ -66,21 +66,26 @@ class FREDProvider:
         """
         try:
             fred = self._get_client()
-            series = fred.get_series(series_id, limit=1, sort_order="desc")
+            # limit=5 to allow skipping NaN placeholders (common on weekends/holidays
+            # for daily series like DGS10 — FRED uses NaN for "no data yet")
+            series = fred.get_series(series_id, limit=5, sort_order="desc")
             if series is None or series.empty:
                 logger.warning("FRED: no data for series %s", series_id)
                 return None
 
-            latest_date = series.index[-1]
-            latest_value = float(series.iloc[-1])
+            # Walk back from the most recent observation to find a non-NaN value
+            latest_value = None
+            latest_date = None
+            for i in range(len(series) - 1, -1, -1):
+                v = float(series.iloc[i])
+                if not pd_is_nan(v):
+                    latest_value = v
+                    latest_date = series.index[i]
+                    break
 
-            if pd_is_nan(latest_value):
-                # Try second-to-last
-                if len(series) > 1:
-                    latest_date = series.index[-2]
-                    latest_value = float(series.iloc[-2])
-                else:
-                    return None
+            if latest_value is None:
+                logger.warning("FRED: all recent observations are NaN for %s", series_id)
+                return None
 
             name, unit, freq = _SERIES_NAMES.get(series_id, (series_id, "value", None))
 
