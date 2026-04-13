@@ -34,6 +34,36 @@ Receive messages from Telegram bot:
 - Support on-demand digest requests (e.g., `/digest`, `/movers`)
 - Respond to user queries through the bot
 
+### Branch: `feature/data-provider-layer` (PR #14)
+Phase 0: Provider adapter layer — rock-solid data foundation.
+
+**Architecture:**
+```
+src/
+├── providers/
+│   ├── base.py          # Protocol definitions (MarketData, News, Options, Macro, Fundamentals, Historical)
+│   ├── alpaca.py        # IEX real-time quotes, Benzinga news, screener movers (free tier)
+│   ├── finnhub.py       # Fundamentals, earnings calendar, analyst ratings, company news
+│   ├── yfinance_provider.py  # Delayed quotes, historical OHLCV, options chain (BS Greeks)
+│   ├── fred.py          # FRED macro indicators, 9-maturity yield curve
+│   ├── cboe.py          # ★ CBOE pre-computed Greeks — delta/gamma/theta/vega direct from exchange
+│   ├── orchestrator.py  # Fallback routing + SQLite caching + find_by_delta()
+│   └── config.py        # Loads API keys from .env
+├── models/              # StockQuote, OptionsSnapshot, NewsArticle, MacroIndicator, YieldCurve, AlertEvent
+├── storage/cache.py     # SQLite cache with TTL, type-safe dataclass round-tripping
+└── utils/greeks.py      # Black-Scholes (backup for yfinance chain; CBOE is primary for Greeks)
+```
+
+**Key design decisions:**
+- **CBOE for Greeks** — exchange pre-computes delta/gamma/theta/vega for every listed option. One HTTP call, zero math. No API key. This replaced a 200-line BS/Brent/BAW self-calculation approach.
+- **find_by_delta(ticker, 0.85)** — orchestrator delegates to CBOEProvider, searches across top N expirations with liquidity gating (spread + OI)
+- **Fallback pattern** — orchestrator tries providers in registration order; first success wins, result cached
+- **Cache TTLs** — quotes 5min, news 15min, options 30min, fundamentals 24hr, macro 1hr
+
+**API keys required:** `ALPACA_API_KEY/SECRET`, `FINNHUB_API_KEY`, `FRED_API_KEY` (yfinance + CBOE need none)
+
+**Diagnostic:** `python scripts/diagnose.py` — 20 checks across all providers + cross-validation
+
 ## Known Issues (from QA — see GitHub Issues)
 
 - **#9 (bug):** Misleading "no market data" error when `filter_movers_by_size` removes all movers. Fix: check `gainers`/`losers` counts *after* filtering and show a filter-specific message.
