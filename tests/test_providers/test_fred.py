@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from src.providers.fred import FREDProvider
-from src.providers.base import AuthError
+from data.providers.fred import FREDProvider
+from data.providers.base import AuthError
 
 
 # ─── Construction ─────────────────────────────────────────────────────────────

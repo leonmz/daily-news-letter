@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from main import format_for_telegram
+from newsletter.formatter import format_for_telegram
 
 
 class TestFormatForTelegram(unittest.TestCase):
@@ -44,18 +44,18 @@ class TestFormatForTelegram(unittest.TestCase):
 
 
 class TestIsAuthorized(unittest.TestCase):
-    @patch("telegram_bot.config")
+    @patch("bot.telegram.config")
     def test_authorized_chat(self, mock_config):
         mock_config.TELEGRAM_CHAT_ID = "906163121"
-        from telegram_bot import _is_authorized
+        from bot.telegram import _is_authorized
         update = MagicMock()
         update.effective_chat.id = 906163121
         self.assertTrue(_is_authorized(update))
 
-    @patch("telegram_bot.config")
+    @patch("bot.telegram.config")
     def test_unauthorized_chat(self, mock_config):
         mock_config.TELEGRAM_CHAT_ID = "906163121"
-        from telegram_bot import _is_authorized
+        from bot.telegram import _is_authorized
         update = MagicMock()
         update.effective_chat.id = 999999999
         self.assertFalse(_is_authorized(update))
@@ -64,35 +64,35 @@ class TestIsAuthorized(unittest.TestCase):
 class TestWatchlistLogic(unittest.TestCase):
     """Test watchlist add/remove logic directly on config.WATCHLIST."""
 
-    @patch("config.WATCHLIST", ["NVDA", "TSLA"])
+    @patch("newsletter.config.WATCHLIST", ["NVDA", "TSLA"])
     def test_add_ticker(self):
-        import config
+        from newsletter import config
         ticker = "AAPL"
         if ticker not in config.WATCHLIST and len(config.WATCHLIST) < 10:
             config.WATCHLIST.append(ticker)
         self.assertIn("AAPL", config.WATCHLIST)
         self.assertEqual(len(config.WATCHLIST), 3)
 
-    @patch("config.WATCHLIST", ["NVDA", "TSLA", "PLTR"])
+    @patch("newsletter.config.WATCHLIST", ["NVDA", "TSLA", "PLTR"])
     def test_remove_ticker(self):
-        import config
+        from newsletter import config
         ticker = "TSLA"
         if ticker in config.WATCHLIST:
             config.WATCHLIST.remove(ticker)
         self.assertNotIn("TSLA", config.WATCHLIST)
         self.assertEqual(len(config.WATCHLIST), 2)
 
-    @patch("config.WATCHLIST", ["NVDA", "TSLA"])
+    @patch("newsletter.config.WATCHLIST", ["NVDA", "TSLA"])
     def test_add_duplicate_ignored(self):
-        import config
+        from newsletter import config
         ticker = "NVDA"
         if ticker not in config.WATCHLIST and len(config.WATCHLIST) < 10:
             config.WATCHLIST.append(ticker)
         self.assertEqual(config.WATCHLIST.count("NVDA"), 1)
 
-    @patch("config.WATCHLIST", list(range(10)))
+    @patch("newsletter.config.WATCHLIST", list(range(10)))
     def test_add_over_cap(self):
-        import config
+        from newsletter import config
         original_len = len(config.WATCHLIST)
         ticker = "NEW"
         if ticker not in config.WATCHLIST and len(config.WATCHLIST) < 10:

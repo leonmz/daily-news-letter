@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.providers.cboe import CBOEProvider
+from data.providers.cboe import CBOEProvider
 
 
 # ─── mock data ────────────────────────────────────────────────────────────────

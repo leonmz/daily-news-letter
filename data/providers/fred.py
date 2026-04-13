@@ -5,8 +5,8 @@ import math
 from datetime import datetime, timezone
 from typing import Optional
 
-from src.models.macro import MacroIndicator, YieldCurve, YieldCurvePoint
-from src.providers.base import AuthError
+from data.models.macro import MacroIndicator, YieldCurve, YieldCurvePoint
+from data.providers.base import AuthError
 
 logger = logging.getLogger(__name__)
 

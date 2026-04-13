@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.engine import BacktestEngine
-from src.backtest.signals import basic_ma_signal
+from backtest.engine import BacktestEngine
+from backtest.signals import basic_ma_signal
 
 
 def _make_prices_df(closes, start="2010-01-04") -> pd.DataFrame:

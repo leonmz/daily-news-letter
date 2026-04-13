@@ -32,7 +32,7 @@ def select_tickers(movers: dict, news: dict, max_tickers: int = 3) -> list[str]:
     - 3+ news articles: +1
     - Volume > 50M: +1
     """
-    from config import WATCHLIST
+    from newsletter.config import WATCHLIST
 
     scores = {}  # ticker -> (score, data)
 
@@ -117,7 +117,7 @@ def select_tickers(movers: dict, news: dict, max_tickers: int = 3) -> list[str]:
 
 def _build_ta_config() -> dict:
     """Build TradingAgents config from environment variables."""
-    from config import ANTHROPIC_API_KEY, GEMINI_API_KEY
+    from newsletter.config import ANTHROPIC_API_KEY, GEMINI_API_KEY
 
     provider = os.getenv("DEEP_ANALYSIS_LLM_PROVIDER", "anthropic")
 
@@ -295,7 +295,7 @@ def run_all_deep_analyses(
     print(f"[deep] Selected: {', '.join(selected)}")
 
     # Determine trade date
-    from market_data import get_last_trading_day, is_market_open
+    from newsletter.market_data import get_last_trading_day, is_market_open
 
     if is_market_open():
         trade_date = datetime.now().strftime("%Y-%m-%d")

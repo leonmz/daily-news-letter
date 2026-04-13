@@ -77,7 +77,7 @@ async def check_alpaca():
             check(lbl, False, skipped=True)
         return
 
-    from src.providers.alpaca import AlpacaProvider
+    from data.providers.alpaca import AlpacaProvider
     p = AlpacaProvider(api_key, secret)
 
     # Quote NVDA
@@ -133,7 +133,7 @@ async def check_finnhub():
             check(lbl, False, skipped=True)
         return None
 
-    from src.providers.finnhub import FinnhubProvider
+    from data.providers.finnhub import FinnhubProvider
     p = FinnhubProvider(api_key)
 
     # Fundamentals NVDA
@@ -183,7 +183,7 @@ async def check_finnhub():
 async def check_yfinance():
     print(f"\n{BOLD}[yfinance]{RESET}")
 
-    from src.providers.yfinance_provider import YFinanceProvider
+    from data.providers.yfinance_provider import YFinanceProvider
     p = YFinanceProvider()
 
     # Quote NVDA
@@ -237,7 +237,7 @@ async def check_fred():
             check(lbl, False, skipped=True)
         return
 
-    from src.providers.fred import FREDProvider
+    from data.providers.fred import FREDProvider
     p = FREDProvider(api_key)
 
     # Fed Funds Rate
@@ -277,7 +277,7 @@ async def check_fred():
 async def check_cboe():
     print(f"\n{BOLD}[CBOE]{RESET}")
 
-    from src.providers.cboe import CBOEProvider
+    from data.providers.cboe import CBOEProvider
     p = CBOEProvider()
 
     # Options chain with Greeks

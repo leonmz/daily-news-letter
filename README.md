@@ -1,4 +1,4 @@
-# Daily Market News Bot 📊
+# Daily Market News Bot
 
 Automated daily digest of top 10 market movers, grouped by sector with AI-analyzed drivers.
 
@@ -10,7 +10,7 @@ pip install -r requirements.txt
 
 # 2. Set up API keys
 cp .env.example .env
-# Edit .env with your keys (see below)
+# Edit .env with your keys
 
 # 3. Test with mock data (no API keys needed)
 python main.py --test
@@ -20,56 +20,61 @@ python main.py
 
 # 5. Run Telegram bot (commands + daily 10AM PT schedule)
 python main.py --bot
-
-# 6. Or schedule only (no command listener)
-python main.py --schedule
 ```
-
-## Bot commands
-
-When running with `--bot`, the Telegram bot responds to:
-
-| Command | Description |
-|---------|-------------|
-| `/start` | Welcome message |
-| `/help` | List available commands |
-| `/digest` | Generate full market digest on-demand |
-| `/movers` | Quick top movers summary (no LLM) |
-| `/watchlist` | Show current watchlist |
-| `/watchlist add TICKER` | Add ticker to watchlist |
-| `/watchlist remove TICKER` | Remove ticker |
-
-## API keys you need
-
-| API | Free tier | What it does | Get key |
-|-----|-----------|--------------|---------|
-| **FMP** | 250 req/day | Top movers + sector data | [financialmodelingprep.com](https://site.financialmodelingprep.com/developer/docs) |
-| **Marketaux** | 100 req/day | News by ticker + sentiment (optional) | [marketaux.com](https://www.marketaux.com/) |
-| **Gemini** | Free tier | LLM analysis of catalysts | [aistudio.google.com](https://aistudio.google.com/apikey) |
-| **Telegram** | Free | Message delivery | [@BotFather](https://t.me/BotFather) |
-
-Minimum to run: **No keys required** (uses yfinance fallback for market data, Google News RSS for news, template for analysis). Add keys for better quality.
 
 ## Architecture
 
 ```
-Market Data (FMP/yfinance)           →  ┐
-News (Marketaux/Google News RSS)     →  ├→ Aggregator → Gemini API → Formatter → Telegram
-User Config (V2)                     →  ┘
+daily-news-letter/
+├── newsletter/     # Core pipeline (config, market data, news, LLM, formatter)
+├── bot/            # Telegram bot command handlers + scheduler
+├── backtest/       # SMA timing backtesting engine
+├── data/           # Provider adapter layer (Phase 0, not yet wired to pipeline)
+├── scripts/
+│   ├── run_newsletter.py  # Newsletter CLI entry point
+│   └── run_backtest.py    # Backtesting CLI entry point
+├── tests/
+│   ├── test_newsletter/
+│   ├── test_backtest/
+│   ├── test_bot/
+│   └── test_providers/
+└── main.py         # Thin shim → scripts/run_newsletter.py (backwards compat)
 ```
 
-## Files
+### Data flow
 
-- `config.py` — API keys, sector mappings
-- `market_data.py` — Top movers fetcher (FMP + yfinance)
-- `news_fetcher.py` — News fetcher (Marketaux + Google News RSS)
-- `llm_analyzer.py` — Gemini API integration for digest generation
-- `main.py` — Pipeline runner + scheduler
-- `telegram_bot.py` — Telegram bot command handlers + polling
+```
+Market Data (FMP/yfinance)        ─┐
+News (Marketaux/yfinance/Google)  ─┤→ newsletter/pipeline.py → LLM → formatter → Telegram
+User watchlist (config.py)        ─┘
+```
 
-## Roadmap
+## API keys
 
-- [x] MVP: daily 10AM digest
-- [x] Telegram bot: on-demand commands (/digest, /movers, /watchlist)
-- [ ] V2: sector watchlist + breaking news alerts
-- [ ] V2: individual stock follow + related news
+| API | Free tier | What it does |
+|-----|-----------|--------------|
+| **FMP** | 250 req/day | Top movers + sector data |
+| **Marketaux** | 100 req/day | News by ticker + sentiment (optional) |
+| **Gemini** | Free tier | LLM analysis of catalysts |
+| **Telegram** | Free | Message delivery |
+
+Minimum to run: **no keys required** (yfinance fallback for data, Google News for news, template for analysis).
+
+## Bot commands
+
+| Command | Description |
+|---------|-------------|
+| `/digest` | Generate full market digest on-demand |
+| `/movers` | Quick top movers summary (no LLM) |
+| `/watchlist` | Show / add / remove watchlist tickers |
+| `/help` | List available commands |
+
+## Backtesting
+
+```bash
+python scripts/run_backtest.py --underlying SPY --signal basic_ma --sma 250
+python scripts/run_backtest.py --compare-sma QQQ
+python scripts/run_backtest.py --underlying TSLA --plot
+```
+
+See [`backtest/README.md`](backtest/README.md) for full docs.

@@ -4,9 +4,9 @@ from typing import Optional, Protocol, runtime_checkable
 
 import pandas as pd
 
-from src.models.market import StockQuote, OptionsSnapshot
-from src.models.news import NewsArticle
-from src.models.macro import MacroIndicator, YieldCurve
+from data.models.market import StockQuote, OptionsSnapshot
+from data.models.news import NewsArticle
+from data.models.macro import MacroIndicator, YieldCurve
 
 
 class ProviderError(Exception):

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.metrics import (
+from backtest.metrics import (
     calculate_cagr,
     calculate_max_drawdown,
     calculate_sharpe,

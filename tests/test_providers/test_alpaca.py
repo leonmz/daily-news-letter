@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.providers.alpaca import AlpacaProvider
-from src.providers.base import AuthError
+from data.providers.alpaca import AlpacaProvider
+from data.providers.base import AuthError
 
 
 # ─── Construction ─────────────────────────────────────────────────────────────
