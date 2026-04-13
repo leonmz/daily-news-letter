@@ -16,7 +16,7 @@ import feedparser
 import requests
 import yfinance as yf
 
-from config import MARKETAUX_API_KEY, MARKETAUX_BASE
+from newsletter.config import MARKETAUX_API_KEY, MARKETAUX_BASE
 
 
 # ── Marketaux API (optional, provides sentiment) ──────────────

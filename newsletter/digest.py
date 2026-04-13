@@ -7,7 +7,7 @@ import json
 
 from google import genai
 
-from config import GEMINI_API_KEY, ANTHROPIC_API_KEY, SECTOR_DISPLAY
+from newsletter.config import GEMINI_API_KEY, ANTHROPIC_API_KEY, SECTOR_DISPLAY
 
 
 SYSTEM_PROMPT = """You are a concise financial market analyst. Your job is to produce

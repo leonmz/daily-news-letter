@@ -21,9 +21,10 @@ from telegram.ext import (
     filters,
 )
 
-import config
-from main import format_compact_summary, format_for_telegram, generate_digest
-from market_data import get_top_movers, enrich_sector_info, filter_movers_by_size
+from newsletter import config
+from newsletter.formatter import format_compact_summary, format_for_telegram
+from newsletter.market_data import get_top_movers, enrich_sector_info, filter_movers_by_size
+from newsletter.pipeline import generate_digest
 
 # Stores the last full digest per chat_id so the inline button can retrieve it
 _last_full_digest: dict[int, str] = {}

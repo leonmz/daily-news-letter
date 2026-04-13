@@ -6,7 +6,7 @@ from typing import Optional
 
 import httpx
 
-from src.models.market import OptionContract, OptionsSnapshot
+from data.models.market import OptionContract, OptionsSnapshot
 
 logger = logging.getLogger(__name__)
 

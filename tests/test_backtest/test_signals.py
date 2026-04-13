@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.signals import basic_ma_signal, dual_ma_signal, vix_optimized_signal
+from backtest.signals import basic_ma_signal, dual_ma_signal, vix_optimized_signal
 
 
 def _make_prices(values, start="2010-01-04") -> pd.Series:

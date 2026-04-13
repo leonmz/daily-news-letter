@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.providers.finnhub import FinnhubProvider
-from src.providers.base import AuthError
+from data.providers.finnhub import FinnhubProvider
+from data.providers.base import AuthError
 
 
 # ─── Construction ─────────────────────────────────────────────────────────────

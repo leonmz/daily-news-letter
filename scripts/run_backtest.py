@@ -21,10 +21,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.backtest.data import load_ticker_data, load_vix_data
-from src.backtest.engine import BacktestEngine
-from src.backtest.report import generate_sma_comparison, generate_signal_comparison
-from src.backtest.signals import basic_ma_signal, vix_optimized_signal, dual_ma_signal
+from backtest.data import load_ticker_data, load_vix_data
+from backtest.engine import BacktestEngine
+from backtest.report import generate_sma_comparison, generate_signal_comparison
+from backtest.signals import basic_ma_signal, vix_optimized_signal, dual_ma_signal
 
 
 def _print_metrics(result, label: str) -> None:

@@ -30,7 +30,7 @@ jobs:
 
       - name: Import health check
         run: |
-          python -c "import config; import market_data; import llm_analyzer; import news_fetcher; import telegram_bot"
+          python -c "from newsletter import config; from newsletter import market_data, digest, news, formatter, pipeline; from backtest import engine, signals, metrics, data"
 
       - name: Run tests with coverage
         run: python -m pytest --cov=. --cov-report=term-missing --cov-fail-under=30 -v

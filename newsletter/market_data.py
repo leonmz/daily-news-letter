@@ -13,8 +13,8 @@ from zoneinfo import ZoneInfo
 import requests
 import yfinance as yf
 
-import config as _config
-from config import FMP_API_KEY, FMP_BASE, SECTOR_MAP, TOP_BLUE_CHIPS, WATCHLIST, MOVER_MIN_MARKET_CAP_B, MOVER_MIN_VOLUME
+from newsletter import config as _config
+from newsletter.config import FMP_API_KEY, FMP_BASE, SECTOR_MAP, TOP_BLUE_CHIPS, WATCHLIST, MOVER_MIN_MARKET_CAP_B, MOVER_MIN_VOLUME
 
 
 # ── Market hours check ────────────────────────────────────────

@@ -1,4 +1,4 @@
-from src.providers.base import (
+from data.providers.base import (
     MarketDataProvider,
     NewsProvider,
     OptionsProvider,

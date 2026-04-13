@@ -1,7 +1,7 @@
 # F2-1: filter_movers_by_size removes tickers below market cap or volume threshold
 def test_filter_movers_by_size_basic():
-    from market_data import filter_movers_by_size
-    import config
+    from newsletter.market_data import filter_movers_by_size
+    from newsletter import config
     # Override thresholds for test
     orig_cap = config.MOVER_MIN_MARKET_CAP_B
     orig_vol = config.MOVER_MIN_VOLUME
@@ -25,8 +25,8 @@ def test_filter_movers_by_size_basic():
 
 # F2-2: market_cap=0 (unknown) is NOT filtered out
 def test_filter_movers_unknown_cap_passes():
-    from market_data import filter_movers_by_size
-    import config
+    from newsletter.market_data import filter_movers_by_size
+    from newsletter import config
     orig_cap = config.MOVER_MIN_MARKET_CAP_B
     config.MOVER_MIN_MARKET_CAP_B = 10.0
     try:
@@ -45,7 +45,7 @@ def test_config_thresholds_from_env():
     import importlib
     os.environ["MOVER_MIN_MARKET_CAP_B"] = "5.0"
     os.environ["MOVER_MIN_VOLUME"] = "5000000"
-    import config
+    from newsletter import config
     importlib.reload(config)
     try:
         assert config.MOVER_MIN_MARKET_CAP_B == 5.0, f"Got {config.MOVER_MIN_MARKET_CAP_B}"
@@ -57,7 +57,7 @@ def test_config_thresholds_from_env():
 
 # F3-1: format_compact_summary parses standard LLM output
 def test_format_compact_summary_standard():
-    from main import format_compact_summary
+    from newsletter.formatter import format_compact_summary
     digest = (
         "## Market summary\nSome overview.\n\n"
         "## 🖥️ Tech\n"
@@ -73,14 +73,14 @@ def test_format_compact_summary_standard():
 
 # F3-2: format_compact_summary returns empty string for non-matching input
 def test_format_compact_summary_fallback_empty():
-    from main import format_compact_summary
+    from newsletter.formatter import format_compact_summary
     digest = "## Market movers (no LLM analysis)\n▲ **NVDA** (+8.5%) $950.50 | Vol: 85M"
     result = format_compact_summary(digest)
     assert result == "", f"Expected empty string, got: {result!r}"
 
 # F3-3: sign preserved correctly for losers (negative sign already in pct)
 def test_format_compact_summary_sign():
-    from main import format_compact_summary
+    from newsletter.formatter import format_compact_summary
     digest = "### ▼ META (-2.8%) $510.80 | Vol: 30M — EU regulatory action\nDetails."
     result = format_compact_summary(digest)
     assert result == "▼ META -2.8% | EU regulatory action", f"Got: {result!r}"

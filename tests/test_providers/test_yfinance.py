@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 import pandas as pd
 import pytest
 
-from src.providers.yfinance_provider import YFinanceProvider
+from data.providers.yfinance_provider import YFinanceProvider
 
 
 # ─── get_quote ────────────────────────────────────────────────────────────────

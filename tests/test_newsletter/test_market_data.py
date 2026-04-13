@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from market_data import _is_trading_day, get_last_trading_day, NYSE_HOLIDAYS, ET
-from llm_analyzer import build_analysis_prompt
+from newsletter.market_data import _is_trading_day, get_last_trading_day, NYSE_HOLIDAYS, ET
+from newsletter.digest import build_analysis_prompt
 
 
 class TestIsTradingDay(unittest.TestCase):

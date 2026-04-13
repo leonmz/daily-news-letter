@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Callable, Optional
 
-from src.storage.cache import Cache
+from data.storage.cache import Cache
 
 logger = logging.getLogger(__name__)
 

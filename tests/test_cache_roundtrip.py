@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.models.market import StockQuote
-from src.models.news import NewsArticle
-from src.storage.cache import Cache
+from data.models.market import StockQuote
+from data.models.news import NewsArticle
+from data.storage.cache import Cache
 
 
 @pytest.fixture

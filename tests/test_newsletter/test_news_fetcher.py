@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch
 
-from news_fetcher import _clean_company_name, get_news_for_movers
+from newsletter.news import _clean_company_name, get_news_for_movers
 
 
 class TestCleanCompanyName(unittest.TestCase):

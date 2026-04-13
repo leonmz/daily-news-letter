@@ -4,9 +4,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from src.models.market import StockQuote
-from src.models.news import NewsArticle
-from src.providers.base import AuthError
+from data.models.market import StockQuote
+from data.models.news import NewsArticle
+from data.providers.base import AuthError
 
 logger = logging.getLogger(__name__)
 
