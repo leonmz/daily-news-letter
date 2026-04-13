@@ -53,8 +53,8 @@ class TestGetNewsForMovers(unittest.TestCase):
                 "url": "#", "source": "test", "published_at": "2026-04-04",
                 "sentiment": None}
 
-    @patch("news_fetcher.fetch_news_google")
-    @patch("news_fetcher.fetch_news_marketaux")
+    @patch("newsletter.news.fetch_news_google")
+    @patch("newsletter.news.fetch_news_marketaux")
     def test_waterfall_fills_all_tickers(self, mock_maux, mock_google):
         """Marketaux covers AAA, Google News covers BBB."""
         mock_maux.return_value = {"AAA": [self._mock_article("AAA")]}
@@ -71,8 +71,8 @@ class TestGetNewsForMovers(unittest.TestCase):
         self.assertIn("BBB", called_tickers)
         self.assertNotIn("AAA", called_tickers)
 
-    @patch("news_fetcher.fetch_news_google")
-    @patch("news_fetcher.fetch_news_marketaux")
+    @patch("newsletter.news.fetch_news_google")
+    @patch("newsletter.news.fetch_news_marketaux")
     def test_empty_list_gets_overwritten(self, mock_maux, mock_google):
         """Marketaux returns empty list for AAA — Google should still fill it."""
         mock_maux.return_value = {"AAA": []}
