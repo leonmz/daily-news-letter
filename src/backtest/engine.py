@@ -56,6 +56,7 @@ class BacktestEngine:
         signal: pd.Series,
         initial_capital: float = 1_000_000,
         annual_fee: float = 0.0009,
+        leverage: float = 1.0,
     ) -> BacktestResult:
         """Run backtest.
 
@@ -64,6 +65,11 @@ class BacktestEngine:
             signal: Series of 1/0 aligned with prices.index.
             initial_capital: Starting portfolio value in dollars.
             annual_fee: Annual expense ratio applied daily when in market.
+            leverage: Return multiplier when in market (default 1.0 = unlevered).
+                      Daily return is clipped at -100% to prevent negative equity.
+                      Use 2.35 to replicate the Google Sheet's Core+LEAP structure:
+                      ~30% core stock + 70% deep-ITM LEAP ≈ 2.35x effective leverage,
+                      producing ~18% CAGR / 0.67 Sharpe / -44% MaxDD on SPY SMA250.
 
         Returns:
             BacktestResult with equity_curve, trades, and metrics.
@@ -76,10 +82,13 @@ class BacktestEngine:
         daily_fee_factor = (1 - annual_fee) ** (1 / 252)
         price_returns = close.pct_change().fillna(0)
 
+        # Apply leverage; clip at -100% so equity can never go negative
+        levered_returns = (price_returns * leverage).clip(lower=-1.0)
+
         # Equity curve: compound daily
         equity_factors = np.where(
             position == 1,
-            (1 + price_returns) * daily_fee_factor,
+            (1 + levered_returns) * daily_fee_factor,
             1.0,
         )
         equity_values = initial_capital * np.cumprod(equity_factors)
@@ -88,9 +97,9 @@ class BacktestEngine:
         # Trade tracking
         trades = self._identify_trades(close, position, equity_curve)
 
-        # Daily returns for Sharpe (only days in market)
+        # Daily returns for Sharpe (levered, only days in market)
         strategy_returns = pd.Series(
-            np.where(position == 1, price_returns, 0.0),
+            np.where(position == 1, levered_returns, 0.0),
             index=close.index,
         )
 
