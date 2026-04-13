@@ -272,6 +272,39 @@ async def check_fred():
         check("Yield curve", False, err4 or "no data")
 
 
+# ─── CBOE ────────────────────────────────────────────────────────────────────
+
+async def check_cboe():
+    print(f"\n{BOLD}[CBOE]{RESET}")
+
+    from src.providers.cboe import CBOEProvider
+    p = CBOEProvider()
+
+    # Options chain with Greeks
+    snap, elapsed, err = await timed(p.get_option_chain("SPY", "2027-12-17"))
+    if snap and snap.calls:
+        greek_str = "Greeks ✅" if snap.has_greeks else "Greeks ❌"
+        check(
+            "Options chain SPY (w/ Greeks)",
+            snap.has_greeks,
+            f"{len(snap.expirations)} exp, {snap.total_contracts} contracts, {greek_str} ({elapsed:.0f}s)"
+        )
+    else:
+        check("Options chain SPY (w/ Greeks)", False, err or "no data")
+
+    # find_by_delta for NVDA 0.85δ
+    c, elapsed2, err2 = await timed(p.find_by_delta("NVDA", target_delta=0.85, min_expiry_days=365))
+    if c and c.delta is not None:
+        mid = (c.bid + c.ask) / 2 if c.bid and c.ask else c.last_price
+        check(
+            "Find 0.85δ LEAP call NVDA",
+            True,
+            f"K={c.strike:.0f} exp={c.expiry} δ={c.delta:.3f} mid=${mid:.2f} ({elapsed2:.0f}s)"
+        )
+    else:
+        check("Find 0.85δ LEAP call NVDA", False, err2 or "no match")
+
+
 # ─── Cross-checks ─────────────────────────────────────────────────────────────
 
 def cross_check_price(
@@ -323,6 +356,7 @@ async def main():
     finnhub_fund = await check_finnhub()
     yfinance_nvda = await check_yfinance()
     await check_fred()
+    await check_cboe()
 
     # Cross-checks
     print(f"\n{BOLD}[Cross-checks]{RESET}")

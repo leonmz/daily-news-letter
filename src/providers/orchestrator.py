@@ -174,3 +174,45 @@ class DataOrchestrator:
             "yield_curve", "yield_curve",
             self._macro_providers, "get_yield_curve",
         )
+
+    async def find_by_delta(
+        self,
+        ticker: str,
+        target_delta: float = 0.85,
+        option_type: str = "call",
+        min_expiry_days: int = 730,
+        **kwargs,
+    ):
+        """
+        Find the option contract closest to target_delta.
+
+        Delegates to the first options provider that has a `find_by_delta`
+        method (e.g. CBOEProvider). Falls back through registered providers.
+        """
+        cache_key = f"delta:{ticker}:{target_delta}:{option_type}:{min_expiry_days}"
+        cached = await self.cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        for provider in self._options_providers:
+            fn = getattr(provider, "find_by_delta", None)
+            if fn is None:
+                continue
+            try:
+                result = await fn(
+                    ticker, target_delta=target_delta,
+                    option_type=option_type,
+                    min_expiry_days=min_expiry_days,
+                    **kwargs,
+                )
+                if result is not None:
+                    provider_name = type(provider).__name__
+                    logger.info("[%s] find_by_delta %s δ=%.2f → K=%s", provider_name, ticker, target_delta, result.strike)
+                    await self.cache.set(cache_key, result, self.TTLS["options"])
+                    return result
+            except Exception as e:
+                logger.warning("find_by_delta via %s failed: %s", type(provider).__name__, e)
+                continue
+
+        logger.warning("No provider could find_by_delta for %s δ=%.2f", ticker, target_delta)
+        return None
