@@ -10,49 +10,37 @@ from src.providers.cboe import CBOEProvider
 
 # ─── mock data ────────────────────────────────────────────────────────────────
 
-MOCK_CBOE_RESPONSE = {
-    "data": {
-        "options": [
-            {
-                "option": "SPY271217C00560000",
-                "bid": 170.0, "bid_size": 5, "ask": 175.0, "ask_size": 10,
-                "iv": 0.224, "open_interest": 50, "volume": 5,
-                "delta": 0.848, "gamma": 0.0012, "theta": -0.08, "vega": 2.07, "rho": 6.5,
-                "last_trade_price": 172.0, "last_trade_time": "2026-04-10T15:30:00",
-                "theo": 172.5,
-            },
-            {
-                "option": "SPY271217C00600000",
-                "bid": 130.0, "bid_size": 10, "ask": 135.0, "ask_size": 15,
-                "iv": 0.230, "open_interest": 100, "volume": 12,
-                "delta": 0.750, "gamma": 0.0015, "theta": -0.09, "vega": 2.50, "rho": 5.0,
-                "last_trade_price": 132.0, "last_trade_time": "2026-04-10T15:30:00",
-                "theo": 132.5,
-            },
-            {
-                "option": "SPY271217P00560000",
-                "bid": 55.0, "bid_size": 5, "ask": 58.0, "ask_size": 10,
-                "iv": 0.224, "open_interest": 30, "volume": 3,
-                "delta": -0.152, "gamma": 0.0012, "theta": -0.05, "vega": 2.07, "rho": -3.5,
-                "last_trade_price": 56.0, "last_trade_time": "2026-04-10T15:30:00",
-                "theo": 56.5,
-            },
-            {  # Near-term option — should be excluded by min_expiry_days
-                "option": "SPY260618C00680000",
-                "bid": 15.0, "bid_size": 50, "ask": 16.0, "ask_size": 50,
-                "iv": 0.18, "open_interest": 5000, "volume": 500,
-                "delta": 0.52, "gamma": 0.008, "theta": -0.20, "vega": 0.80, "rho": 0.5,
-                "last_trade_price": 15.5, "last_trade_time": "2026-04-10T15:30:00",
-                "theo": 15.5,
-            },
-        ]
-    }
-}
+MOCK_OPTIONS = [
+    {
+        "option": "SPY271217C00560000",
+        "bid": 170.0, "ask": 175.0, "iv": 0.224, "open_interest": 50, "volume": 5,
+        "delta": 0.848, "gamma": 0.0012, "theta": -0.08, "vega": 2.07,
+        "last_trade_price": 172.0,
+    },
+    {
+        "option": "SPY271217C00600000",
+        "bid": 130.0, "ask": 135.0, "iv": 0.230, "open_interest": 100, "volume": 12,
+        "delta": 0.750, "gamma": 0.0015, "theta": -0.09, "vega": 2.50,
+        "last_trade_price": 132.0,
+    },
+    {
+        "option": "SPY271217P00560000",
+        "bid": 55.0, "ask": 58.0, "iv": 0.224, "open_interest": 30, "volume": 3,
+        "delta": -0.152, "gamma": 0.0012, "theta": -0.05, "vega": 2.07,
+        "last_trade_price": 56.0,
+    },
+    {  # Near-term — should be excluded by min_expiry_days
+        "option": "SPY260618C00680000",
+        "bid": 15.0, "ask": 16.0, "iv": 0.18, "open_interest": 5000, "volume": 500,
+        "delta": 0.52, "gamma": 0.008, "theta": -0.20, "vega": 0.80,
+        "last_trade_price": 15.5,
+    },
+]
 
 
 def _mock_fetch():
-    """Patch _fetch_raw to return mock data without HTTP call."""
-    return patch.object(CBOEProvider, "_fetch_raw", new_callable=AsyncMock, return_value=MOCK_CBOE_RESPONSE)
+    """Patch _fetch to return mock options list."""
+    return patch.object(CBOEProvider, "_fetch", new_callable=AsyncMock, return_value=MOCK_OPTIONS)
 
 
 # ─── get_option_chain ─────────────────────────────────────────────────────────
@@ -109,7 +97,7 @@ async def test_get_option_chain_all_expiries():
 @pytest.mark.asyncio
 async def test_get_option_chain_failure_returns_none():
     p = CBOEProvider()
-    with patch.object(p, "_fetch_raw", new_callable=AsyncMock, return_value=None):
+    with patch.object(p, "_fetch", new_callable=AsyncMock, side_effect=RuntimeError("network")):
         snap = await p.get_option_chain("SPY")
 
     assert snap is None
