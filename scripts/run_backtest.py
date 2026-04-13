@@ -73,7 +73,9 @@ def run_single(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     engine = BacktestEngine()
-    result = engine.run(prices, sig)
+    result = engine.run(prices, sig, leverage=args.leverage)
+    if args.leverage != 1.0:
+        label += f" {args.leverage:.2f}x"
     _print_metrics(result, label)
 
     if args.plot:
@@ -142,6 +144,17 @@ def main() -> None:
         "--compare-signals",
         metavar="TICKER",
         help="Compare all signals for the given ticker",
+    )
+    parser.add_argument(
+        "--leverage",
+        type=float,
+        default=1.0,
+        metavar="X",
+        help=(
+            "Return multiplier when in market (default: 1.0 = unlevered). "
+            "Use 2.35 to replicate the Google Sheet Core+LEAP structure. "
+            "Example: --leverage 2.35"
+        ),
     )
     parser.add_argument("--plot", action="store_true", help="Save equity curve plot")
     parser.add_argument("--output", help="Output path for plot (default: auto)")
