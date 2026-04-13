@@ -48,11 +48,9 @@ class TestCalculateCagr:
         assert abs(cagr) < 0.001
 
     def test_empty_after_dropna_returns_zero(self):
-        eq = _equity([np.nan, np.nan, np.nan])
-        # dropna leaves empty — should not crash, return 0
-        # Actually dropna().iloc[0] would raise; let's just test it handles NaN-heavy gracefully
-        eq2 = _equity([1_000_000] + [np.nan] * 2 + [1_100_000] * 250)
-        cagr = calculate_cagr(eq2)
+        # Sparse NaN series: only start and end values present — should still compute CAGR
+        eq = _equity([1_000_000] + [np.nan] * 2 + [1_100_000] * 250)
+        cagr = calculate_cagr(eq)
         assert cagr > 0
 
 
