@@ -11,16 +11,14 @@ import pandas as pd
 
 @dataclass
 class BacktestMetrics:
-    cagr_pretax: float          # Annualized return before taxes
-    cagr_aftertax: float        # Annualized return after taxes
-    sharpe: float               # Sharpe ratio (annualized, rf=2%)
-    max_drawdown: float         # Max drawdown as negative fraction, e.g. -0.45
-    max_dd_start: date          # Date drawdown peak began
-    max_dd_end: date            # Date trough hit
-    time_in_market: float       # Fraction of days in market, e.g. 0.72
-    num_trades: int             # Number of round-trip trades
-    final_value_pretax: float
-    final_value_aftertax: float
+    cagr: float              # Annualized return (pre-tax)
+    sharpe: float            # Sharpe ratio (annualized, rf=2%)
+    max_drawdown: float      # Max drawdown as negative fraction, e.g. -0.45
+    max_dd_start: date
+    max_dd_end: date
+    time_in_market: float    # Fraction of days in market
+    num_trades: int
+    final_value: float
 
 
 def calculate_cagr(equity_curve: pd.Series) -> float:
@@ -32,9 +30,12 @@ def calculate_cagr(equity_curve: pd.Series) -> float:
     Returns:
         CAGR as a decimal (e.g. 0.18 for 18%).
     """
-    start = equity_curve.dropna().iloc[0]
-    end = equity_curve.dropna().iloc[-1]
-    n_days = (equity_curve.index[-1] - equity_curve.index[0]).days
+    curve = equity_curve.dropna()
+    if len(curve) < 2:
+        return 0.0
+    start = curve.iloc[0]
+    end = curve.iloc[-1]
+    n_days = (curve.index[-1] - curve.index[0]).days
     years = n_days / 365.25
     if years <= 0 or start <= 0:
         return 0.0
@@ -53,9 +54,10 @@ def calculate_sharpe(returns: pd.Series, risk_free_rate: float = 0.02) -> float:
     """
     rf_daily = risk_free_rate / 252
     excess = returns - rf_daily
-    if excess.std() == 0:
+    std = excess.std()
+    if std == 0:
         return 0.0
-    return (excess.mean() / excess.std()) * np.sqrt(252)
+    return float((excess.mean() / std) * np.sqrt(252))
 
 
 def calculate_max_drawdown(equity_curve: pd.Series) -> tuple[float, date, date]:
@@ -72,49 +74,42 @@ def calculate_max_drawdown(equity_curve: pd.Series) -> tuple[float, date, date]:
     running_max = curve.cummax()
     drawdown = (curve - running_max) / running_max
 
-    min_dd = drawdown.min()
+    min_dd = float(drawdown.min())
     trough_date = drawdown.idxmin()
-
-    # Peak is the last time the running max was at the trough-day value
     peak_date = running_max[:trough_date].idxmax()
 
-    return float(min_dd), peak_date.date(), trough_date.date()
+    return min_dd, peak_date.date(), trough_date.date()
 
 
 def calculate_metrics(
-    equity_curve_pretax: pd.Series,
-    equity_curve_aftertax: pd.Series,
+    equity_curve: pd.Series,
     daily_returns: pd.Series,
     signal: pd.Series,
     num_trades: int,
 ) -> BacktestMetrics:
-    """Compute all metrics from equity curves and signal.
+    """Compute all metrics from equity curve and position signal.
 
     Args:
-        equity_curve_pretax: Pre-tax portfolio value.
-        equity_curve_aftertax: After-tax portfolio value.
-        daily_returns: Strategy daily returns (pre-tax, used for Sharpe).
-        signal: Shifted position signal (1 = in market) as applied.
+        equity_curve: Portfolio value over time.
+        daily_returns: Strategy daily returns (used for Sharpe).
+        signal: Shifted position (1=in market) as actually applied.
         num_trades: Number of completed round-trip trades.
 
     Returns:
         BacktestMetrics dataclass.
     """
-    cagr_pre = calculate_cagr(equity_curve_pretax)
-    cagr_after = calculate_cagr(equity_curve_aftertax)
+    cagr = calculate_cagr(equity_curve)
     sharpe = calculate_sharpe(daily_returns)
-    max_dd, dd_start, dd_end = calculate_max_drawdown(equity_curve_aftertax)
+    max_dd, dd_start, dd_end = calculate_max_drawdown(equity_curve)
     time_in_market = float(signal.mean())
 
     return BacktestMetrics(
-        cagr_pretax=cagr_pre,
-        cagr_aftertax=cagr_after,
+        cagr=cagr,
         sharpe=sharpe,
         max_drawdown=max_dd,
         max_dd_start=dd_start,
         max_dd_end=dd_end,
         time_in_market=time_in_market,
         num_trades=num_trades,
-        final_value_pretax=float(equity_curve_pretax.iloc[-1]),
-        final_value_aftertax=float(equity_curve_aftertax.iloc[-1]),
+        final_value=float(equity_curve.iloc[-1]),
     )
