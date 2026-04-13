@@ -245,6 +245,31 @@ class TestLEAPSimulatorFullRun(unittest.TestCase):
         with self.assertRaises(ValueError):
             LEAPSimulator(core_pct=0.40, leap_pct=0.40)
 
+    def test_invalid_roll_gt_expiry_raises(self):
+        """roll_months > expiry_months should raise ValueError."""
+        with self.assertRaises(ValueError):
+            LEAPSimulator(roll_months=8, expiry_months=6)
+
+    def test_reentry_after_exit(self):
+        """Exit then re-enter: portfolio should survive the cash gap."""
+        n = 80
+        vals = [400.0 * (1.001 ** i) for i in range(n)]
+        prices = _make_prices(vals)
+        vix = _make_vix(20.0, n)
+        # In for 20 days, out for 20, in for 40
+        signal = _make_signal([0] + [1]*20 + [0]*20 + [1]*39)
+        sim = LEAPSimulator()
+        equity = sim.simulate(prices, vix, signal, 1_000_000)
+        # Rising market + two in-market periods → should end above initial
+        self.assertGreater(float(equity.iloc[-1]), 1_000_000)
+        # Cash period should be flat
+        # Position lags by 1, so cash starts at day 22, ends at day 41
+        for i in range(23, 41):
+            self.assertAlmostEqual(
+                float(equity.iloc[22]), float(equity.iloc[i]), places=0,
+                msg=f"Cash period should be flat on day {i}"
+            )
+
 
 # ---------------------------------------------------------------------------
 # Roll cost calculation

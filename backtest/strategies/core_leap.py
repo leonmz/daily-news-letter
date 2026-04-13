@@ -123,12 +123,9 @@ class CoreLeapBacktest:
 
         position = signal.shift(1).fillna(0)
 
-        # Daily returns for Sharpe calculation
-        daily_returns = equity_curve.pct_change().fillna(0)
-        strategy_returns = pd.Series(
-            np.where(position == 1, daily_returns.values, 0.0),
-            index=equity_curve.index,
-        )
+        # Daily returns for Sharpe — equity_curve already reflects cash (flat)
+        # and invested (option P&L) states, so no position mask needed.
+        strategy_returns = equity_curve.pct_change().fillna(0)
 
         trades = self._identify_trades(equity_curve, position)
 

@@ -182,6 +182,10 @@ class LEAPSimulator:
 
         if abs(core_pct + leap_pct - 1.0) > 1e-6:
             raise ValueError(f"core_pct + leap_pct must equal 1.0, got {core_pct + leap_pct}")
+        if roll_months > expiry_months:
+            raise ValueError(
+                f"roll_months ({roll_months}) must be <= expiry_months ({expiry_months})"
+            )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -189,7 +193,9 @@ class LEAPSimulator:
 
     def _leap_price(self, S: float, K: float, ttm_trading_days: int, iv: float) -> float:
         """Price a LEAP using BS, converting trading-day TTM to years."""
-        ttm_years = max(ttm_trading_days, 1) / 252.0
+        if ttm_trading_days <= 0:
+            return max(S - K, 0.0)  # expired: intrinsic value
+        ttm_years = ttm_trading_days / 252.0
         return bs_call_price(S, K, ttm_years, self.risk_free_rate, iv)
 
     def _entry_leap_ttm(self) -> int:
@@ -261,7 +267,8 @@ class LEAPSimulator:
                 C_ask = C * (1.0 + self.bid_ask_spread / 2.0)
 
                 core_shares = (self.core_pct * portfolio) / S
-                leap_units = (self.leap_pct * portfolio) / max(C_ask, 1e-10)
+                # Floor at 1% of spot to avoid overflow from near-zero premiums
+                leap_units = (self.leap_pct * portfolio) / max(C_ask, 0.01 * S)
                 leap_strike = K
                 days_held = 0
                 in_market = True
@@ -270,8 +277,8 @@ class LEAPSimulator:
                 days_held += 1
                 ttm_days = entry_ttm - days_held
 
-                # ── Roll ─────────────────────────────────────────────
-                if days_held >= roll_at:
+                # ── Roll (skip if exiting on this bar) ────────────────
+                if days_held >= roll_at and pos == 1:
                     # Sell old LEAP at bid
                     C_old = self._leap_price(S, leap_strike, max(ttm_days, 0), iv)
                     C_bid = C_old * (1.0 - self.bid_ask_spread / 2.0)
@@ -293,7 +300,7 @@ class LEAPSimulator:
 
                 # ── Transition: invested → cash ──────────────────────
                 if pos == 0:
-                    C_exit = self._leap_price(S, leap_strike, max(ttm_days, 1), iv)
+                    C_exit = self._leap_price(S, leap_strike, max(ttm_days, 0), iv)
                     C_bid = C_exit * (1.0 - self.bid_ask_spread / 2.0)
                     portfolio = core_shares * S + leap_units * C_bid
 
@@ -305,7 +312,7 @@ class LEAPSimulator:
                     equity_values.append(portfolio)
                 else:
                     # ── Mark to market at mid ─────────────────────────
-                    C_mid = self._leap_price(S, leap_strike, max(ttm_days, 1), iv)
+                    C_mid = self._leap_price(S, leap_strike, max(ttm_days, 0), iv)
                     equity_values.append(core_shares * S + leap_units * C_mid)
 
             else:
