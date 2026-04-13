@@ -85,7 +85,8 @@ def run_single(args: argparse.Namespace) -> None:
     sma = args.sma
 
     if signal_name == "basic_ma":
-        sig = basic_ma_signal(prices["close"], period=sma)
+        sig = basic_ma_signal(prices["close"], period=sma,
+                              entry_mult=args.entry_mult, exit_mult=args.exit_mult)
         label = f"{ticker} Basic_MA (SMA{sma})"
     elif signal_name == "vix_optimized":
         vix = load_vix_data()["close"]

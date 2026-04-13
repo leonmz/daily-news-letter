@@ -289,10 +289,11 @@ class TestFlatVsLEAP(unittest.TestCase):
     (convexity protection via falling delta).
     """
 
-    def _run_flat(self, prices: pd.DataFrame, signal: pd.Series, initial: float = 1_000_000):
+    def _run_flat(self, prices: pd.DataFrame, signal: pd.Series,
+                  leverage: float = 2.35, initial: float = 1_000_000):
         from backtest.engine import BacktestEngine
         engine = BacktestEngine()
-        result = engine.run(prices, signal, leverage=2.35)
+        result = engine.run(prices, signal, leverage=leverage)
         return result.equity_curve
 
     def _run_leap(self, prices: pd.DataFrame, signal: pd.Series, initial: float = 1_000_000):
@@ -302,10 +303,9 @@ class TestFlatVsLEAP(unittest.TestCase):
 
     def test_leap_differs_from_flat_leverage(self):
         """
-        LEAP simulation must produce different results from flat leverage —
-        verifying that the option dynamics (theta, delta, convexity) are
-        actually modelled rather than a trivial pass-through.
-        Also: in a rising market LEAP should outperform flat 1x but stay below 2.35x.
+        LEAP simulation must produce different results from flat 2.35x leverage,
+        verifying that option dynamics (theta, delta, convexity) are modelled
+        rather than a trivial pass-through.
         """
         n = 100
         # Rising market: 0.3% per day compounded over 100 days ≈ +35%
@@ -313,20 +313,19 @@ class TestFlatVsLEAP(unittest.TestCase):
         prices = _make_prices(vals)
         signal = _make_signal([0] + [1] * 99)
 
-        equity_flat_1x = self._run_flat(prices, signal)
-        equity_flat_2x = self._run_flat(prices, signal)  # same data, leverage via engine
+        equity_flat_235x = self._run_flat(prices, signal, leverage=2.35)
         equity_leap = self._run_leap(prices, signal)
 
-        # All strategies gain in a rising market
-        self.assertGreater(float(equity_flat_1x.iloc[-1]), 1_000_000)
+        # Both gain in a rising market
+        self.assertGreater(float(equity_flat_235x.iloc[-1]), 1_000_000)
         self.assertGreater(float(equity_leap.iloc[-1]), 1_000_000)
 
-        # LEAP result must be meaningfully different from flat 1x unlevered
+        # LEAP result must differ meaningfully from flat 2.35x (option dynamics active)
         self.assertNotAlmostEqual(
-            float(equity_flat_1x.iloc[-1]),
+            float(equity_flat_235x.iloc[-1]),
             float(equity_leap.iloc[-1]),
             delta=50_000,
-            msg="LEAP sim should differ from flat 1x — option dynamics must be active",
+            msg="LEAP sim should differ from flat 2.35x — option dynamics must be active",
         )
 
 
