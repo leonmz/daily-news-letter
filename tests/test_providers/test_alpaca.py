@@ -105,6 +105,13 @@ def _mock_news_item(headline: str, summary: str, url: str):
     return item
 
 
+def _wrap_news(items):
+    """Wrap a list of news items into a mock NewsSet (data={'news': [...]})."""
+    news_set = MagicMock()
+    news_set.data = {"news": items}
+    return news_set
+
+
 @pytest.mark.asyncio
 async def test_get_news_returns_articles():
     provider = AlpacaProvider("key", "secret")
@@ -114,10 +121,10 @@ async def test_get_news_returns_articles():
         _mock_news_item("NVDA new GPU announced", "Next gen GPU announced at GTC.", "https://example.com/2"),
     ]
 
-    with patch.object(provider, "_get_stock_client") as mock_client_fn:
+    with patch.object(provider, "_get_news_client") as mock_client_fn:
         mock_client = MagicMock()
         mock_client_fn.return_value = mock_client
-        mock_client.get_news.return_value = mock_items
+        mock_client.get_news.return_value = _wrap_news(mock_items)
 
         articles = await provider.get_news("NVDA", limit=5)
 
@@ -137,10 +144,10 @@ async def test_get_news_respects_limit():
         for i in range(20)
     ]
 
-    with patch.object(provider, "_get_stock_client") as mock_client_fn:
+    with patch.object(provider, "_get_news_client") as mock_client_fn:
         mock_client = MagicMock()
         mock_client_fn.return_value = mock_client
-        mock_client.get_news.return_value = mock_items
+        mock_client.get_news.return_value = _wrap_news(mock_items)
 
         articles = await provider.get_news("NVDA", limit=3)
 
@@ -151,7 +158,7 @@ async def test_get_news_respects_limit():
 async def test_get_news_exception_returns_empty():
     provider = AlpacaProvider("key", "secret")
 
-    with patch.object(provider, "_get_stock_client") as mock_client_fn:
+    with patch.object(provider, "_get_news_client") as mock_client_fn:
         mock_client = MagicMock()
         mock_client_fn.return_value = mock_client
         mock_client.get_news.side_effect = RuntimeError("API down")
@@ -169,10 +176,10 @@ async def test_get_market_news_ticker_is_none():
 
     mock_items = [_mock_news_item("Market rally", "S&P 500 up 2%.", "https://example.com/m1")]
 
-    with patch.object(provider, "_get_stock_client") as mock_client_fn:
+    with patch.object(provider, "_get_news_client") as mock_client_fn:
         mock_client = MagicMock()
         mock_client_fn.return_value = mock_client
-        mock_client.get_news.return_value = mock_items
+        mock_client.get_news.return_value = _wrap_news(mock_items)
 
         articles = await provider.get_market_news(5)
 

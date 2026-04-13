@@ -1,7 +1,7 @@
 """Unit tests for YFinanceProvider — all yfinance calls mocked."""
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
 import pandas as pd
 import pytest
@@ -142,20 +142,21 @@ async def test_get_expirations_returns_dates():
 async def test_get_option_chain_success():
     provider = YFinanceProvider()
 
+    # ATM-ish options: spot ~500, expiry ~6 months out → BS IV back-calc should work
     calls_df = pd.DataFrame({
         "strike": [500.0, 510.0],
-        "lastPrice": [5.0, 3.0],
-        "bid": [4.9, 2.9],
-        "ask": [5.1, 3.1],
+        "lastPrice": [25.0, 20.0],
+        "bid": [24.5, 19.5],
+        "ask": [25.5, 20.5],
         "volume": [1000, 500],
         "openInterest": [5000, 3000],
-        "impliedVolatility": [0.20, 0.22],
+        "impliedVolatility": [0.20, 0.22],  # yfinance fallback IV
     })
     puts_df = pd.DataFrame({
         "strike": [490.0],
-        "lastPrice": [4.0],
-        "bid": [3.9],
-        "ask": [4.1],
+        "lastPrice": [20.0],
+        "bid": [19.5],
+        "ask": [20.5],
         "volume": [800],
         "openInterest": [4000],
         "impliedVolatility": [0.21],
@@ -166,11 +167,23 @@ async def test_get_option_chain_success():
     chain.puts = puts_df
 
     mock_ticker = MagicMock()
-    mock_ticker.options = ("2026-04-18", "2026-04-25")
+    mock_ticker.options = ("2026-10-16", "2026-12-18")
     mock_ticker.option_chain.return_value = chain
+    # fast_info for spot price auto-fetch
+    mock_ticker.fast_info.last_price = 500.0
+    mock_ticker.fast_info.previous_close = 495.0
+    mock_ticker.fast_info.three_month_average_volume = 50_000_000
+    mock_ticker.fast_info.market_cap = None
+    mock_ticker.fast_info.currency = "USD"
+    mock_ticker.info = {}
+    mock_ticker.history.return_value = pd.DataFrame(
+        {"Volume": [50_000_000]}, index=[datetime.now(timezone.utc)]
+    )
 
     with patch("yfinance.Ticker", return_value=mock_ticker):
-        snapshot = await provider.get_option_chain("SPY", "2026-04-18")
+        snapshot = await provider.get_option_chain(
+            "SPY", "2026-10-16", spot_price=500.0, risk_free_rate=0.04
+        )
 
     assert snapshot is not None
     assert snapshot.ticker == "SPY"
@@ -178,8 +191,16 @@ async def test_get_option_chain_success():
     assert len(snapshot.puts) == 1
     assert snapshot.total_contracts == 3
     assert snapshot.calls[0].strike == 500.0
-    assert snapshot.calls[0].implied_volatility == pytest.approx(0.20)
     assert snapshot.source == "yfinance"
+
+    # Greeks must be populated via BS (market IV back-calculation)
+    assert snapshot.has_greeks, "Greeks should be computed via Black-Scholes"
+    c = snapshot.calls[0]
+    assert c.delta is not None
+    assert 0.0 < c.delta < 1.0, f"Call delta out of range: {c.delta}"
+    assert c.gamma is not None and c.gamma >= 0
+    assert c.theta is not None and c.theta <= 0, "Theta should be negative for long options"
+    assert c.vega is not None and c.vega >= 0
 
 
 @pytest.mark.asyncio
