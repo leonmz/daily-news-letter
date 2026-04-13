@@ -37,7 +37,7 @@ class TestGetLastTradingDay(unittest.TestCase):
     def test_get_last_trading_day_before_close_uses_prior_day(self):
         # Monday 2026-05-04 10:00am ET — before 4pm close
         monday_morning = datetime(2026, 5, 4, 10, 0, 0, tzinfo=ET)
-        with patch("market_data.datetime") as mock_dt:
+        with patch("newsletter.market_data.datetime") as mock_dt:
             mock_dt.now.return_value = monday_morning
             mock_dt.strptime = datetime.strptime
             result = get_last_trading_day()
@@ -47,7 +47,7 @@ class TestGetLastTradingDay(unittest.TestCase):
     def test_get_last_trading_day_after_close(self):
         # Monday 2026-05-04 17:00 ET — after 4pm close
         monday_evening = datetime(2026, 5, 4, 17, 0, 0, tzinfo=ET)
-        with patch("market_data.datetime") as mock_dt:
+        with patch("newsletter.market_data.datetime") as mock_dt:
             mock_dt.now.return_value = monday_evening
             mock_dt.strptime = datetime.strptime
             result = get_last_trading_day()
