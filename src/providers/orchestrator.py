@@ -1,8 +1,6 @@
-"""DataOrchestrator — fallback routing + SQLite caching across providers."""
+"""DataOrchestrator -- fallback routing + SQLite caching across providers."""
 
-import json
 import logging
-from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 from src.storage.cache import Cache
@@ -11,37 +9,19 @@ logger = logging.getLogger(__name__)
 
 
 class DataOrchestrator:
-    """
-    Routes data requests to providers with:
-    - Fallback: if primary provider fails, try secondary
-    - SQLite caching with per-data-type TTLs
-    - Logging of which provider served each request
-
-    TTLs:
-        quotes:         5 min
-        news:           15 min
-        options:        30 min
-        fundamentals:   24 hours
-        macro:          60 min
-    """
+    """Routes data requests to providers with fallback and caching."""
 
     TTLS = {
-        "quote": 300,
-        "top_movers": 300,
-        "news": 900,
-        "market_news": 900,
-        "options": 1800,
-        "expirations": 1800,
+        "quote": 300, "top_movers": 300,
+        "news": 900, "market_news": 900,
+        "options": 1800, "expirations": 1800,
         "fundamentals": 86400,
-        "earnings": 3600,
-        "recommendations": 3600,
-        "macro": 3600,
-        "yield_curve": 3600,
+        "earnings": 3600, "recommendations": 3600,
+        "macro": 3600, "yield_curve": 3600,
     }
 
     def __init__(self, cache: Optional[Cache] = None):
         self.cache = cache or Cache()
-        # Provider registrations
         self._market_providers: list[Any] = []
         self._news_providers: list[Any] = []
         self._options_providers: list[Any] = []
@@ -69,19 +49,9 @@ class DataOrchestrator:
         return self
 
     async def _with_fallback(
-        self,
-        cache_key: str,
-        ttl_key: str,
-        providers: list[Any],
-        method: str,
-        *args,
-        **kwargs,
+        self, cache_key: str, ttl_key: str, providers: list[Any],
+        method: str, *args, **kwargs,
     ) -> Optional[Any]:
-        """
-        Try providers in order, return first successful result.
-        Uses cache to avoid redundant calls within TTL window.
-        """
-        # Check cache first
         cached = await self.cache.get(cache_key)
         if cached is not None:
             logger.debug("Cache hit: %s", cache_key)
@@ -89,24 +59,21 @@ class DataOrchestrator:
 
         ttl = self.TTLS.get(ttl_key, 300)
         result = None
-
         for provider in providers:
-            provider_name = type(provider).__name__
             fn: Optional[Callable] = getattr(provider, method, None)
             if fn is None:
                 continue
             try:
                 result = await fn(*args, **kwargs)
                 if result is not None and result != [] and result != {}:
-                    logger.info("[%s] served %s%s", provider_name, method, f"({args[0]})" if args else "")
+                    logger.info("[%s] served %s%s", type(provider).__name__, method, f"({args[0]})" if args else "")
                     await self.cache.set(cache_key, result, ttl)
                     return result
             except Exception as e:
-                logger.warning("[%s] %s failed: %s — trying next provider", provider_name, method, e)
-                continue
+                logger.warning("[%s] %s failed: %s", type(provider).__name__, method, e)
 
         logger.warning("All providers failed for %s", cache_key)
-        return result  # may be None or empty
+        return result
 
     async def get_quote(self, ticker: str):
         return await self._with_fallback(
@@ -176,19 +143,9 @@ class DataOrchestrator:
         )
 
     async def find_by_delta(
-        self,
-        ticker: str,
-        target_delta: float = 0.85,
-        option_type: str = "call",
-        min_expiry_days: int = 730,
-        **kwargs,
+        self, ticker: str, target_delta: float = 0.85,
+        option_type: str = "call", min_expiry_days: int = 730, **kwargs,
     ):
-        """
-        Find the option contract closest to target_delta.
-
-        Delegates to the first options provider that has a `find_by_delta`
-        method (e.g. CBOEProvider). Falls back through registered providers.
-        """
         cache_key = f"delta:{ticker}:{target_delta}:{option_type}:{min_expiry_days}"
         cached = await self.cache.get(cache_key)
         if cached is not None:
@@ -201,18 +158,14 @@ class DataOrchestrator:
             try:
                 result = await fn(
                     ticker, target_delta=target_delta,
-                    option_type=option_type,
-                    min_expiry_days=min_expiry_days,
-                    **kwargs,
+                    option_type=option_type, min_expiry_days=min_expiry_days, **kwargs,
                 )
                 if result is not None:
-                    provider_name = type(provider).__name__
-                    logger.info("[%s] find_by_delta %s δ=%.2f → K=%s", provider_name, ticker, target_delta, result.strike)
+                    logger.info("[%s] find_by_delta %s d=%.2f -> K=%s", type(provider).__name__, ticker, target_delta, result.strike)
                     await self.cache.set(cache_key, result, self.TTLS["options"])
                     return result
             except Exception as e:
                 logger.warning("find_by_delta via %s failed: %s", type(provider).__name__, e)
-                continue
 
-        logger.warning("No provider could find_by_delta for %s δ=%.2f", ticker, target_delta)
+        logger.warning("No provider could find_by_delta for %s d=%.2f", ticker, target_delta)
         return None

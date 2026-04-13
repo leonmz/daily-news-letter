@@ -1,30 +1,23 @@
 """FRED (Federal Reserve Economic Data) provider via fredapi SDK."""
 
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Optional
 
 from src.models.macro import MacroIndicator, YieldCurve, YieldCurvePoint
-from src.providers.base import AuthError, ProviderError
+from src.providers.base import AuthError
 
 logger = logging.getLogger(__name__)
 
 _SOURCE = "fred"
 
-# FRED series IDs for yield curve maturities
 _YIELD_SERIES = {
-    "1M": "DGS1MO",
-    "3M": "DGS3MO",
-    "6M": "DGS6MO",
-    "1Y": "DGS1",
-    "2Y": "DGS2",
-    "5Y": "DGS5",
-    "10Y": "DGS10",
-    "20Y": "DGS20",
-    "30Y": "DGS30",
+    "1M": "DGS1MO", "3M": "DGS3MO", "6M": "DGS6MO",
+    "1Y": "DGS1", "2Y": "DGS2", "5Y": "DGS5",
+    "10Y": "DGS10", "20Y": "DGS20", "30Y": "DGS30",
 }
 
-# Human-readable names for common series
 _SERIES_NAMES = {
     "FEDFUNDS": ("Federal Funds Rate", "percent", "monthly"),
     "DGS10": ("10-Year Treasury Yield", "percent", "daily"),
@@ -39,14 +32,20 @@ _SERIES_NAMES = {
 }
 
 
+def _first_valid(series) -> tuple[Optional[float], Optional[datetime]]:
+    """Return the first non-NaN (value, date) from a descending FRED series."""
+    for i in range(len(series) - 1, -1, -1):
+        v = float(series.iloc[i])
+        try:
+            if not math.isnan(v):
+                dt = series.index[i].to_pydatetime()
+                return v, dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            continue
+    return None, None
+
+
 class FREDProvider:
-    """
-    FRED economic data provider.
-
-    Free API, no rate limit for reasonable use.
-    Returns the most recent observation for any series.
-    """
-
     def __init__(self, api_key: str):
         if not api_key:
             raise AuthError("FRED_API_KEY is required")
@@ -60,117 +59,57 @@ class FREDProvider:
         return self._client
 
     async def get_indicator(self, series_id: str) -> Optional[MacroIndicator]:
-        """
-        Return the latest observation for a FRED series.
-        series_id examples: "FEDFUNDS", "UNRATE", "CPIAUCSL", "DGS10"
-        """
         try:
-            fred = self._get_client()
-            # limit=5 to allow skipping NaN placeholders (common on weekends/holidays
-            # for daily series like DGS10 — FRED uses NaN for "no data yet")
-            series = fred.get_series(series_id, limit=5, sort_order="desc")
+            series = self._get_client().get_series(series_id, limit=5, sort_order="desc")
             if series is None or series.empty:
                 logger.warning("FRED: no data for series %s", series_id)
                 return None
 
-            # Walk back from the most recent observation to find a non-NaN value
-            latest_value = None
-            latest_date = None
-            for i in range(len(series) - 1, -1, -1):
-                v = float(series.iloc[i])
-                if not pd_is_nan(v):
-                    latest_value = v
-                    latest_date = series.index[i]
-                    break
-
-            if latest_value is None:
+            value, obs_dt = _first_valid(series)
+            if value is None:
                 logger.warning("FRED: all recent observations are NaN for %s", series_id)
                 return None
 
             name, unit, freq = _SERIES_NAMES.get(series_id, (series_id, "value", None))
-
-            obs_dt = latest_date.to_pydatetime()
-            if obs_dt.tzinfo is None:
-                obs_dt = obs_dt.replace(tzinfo=timezone.utc)
-
             return MacroIndicator(
-                series_id=series_id,
-                name=name,
-                value=latest_value,
-                unit=unit,
-                observation_date=obs_dt,
-                source=_SOURCE,
-                frequency=freq,
+                series_id=series_id, name=name, value=value, unit=unit,
+                observation_date=obs_dt, source=_SOURCE, frequency=freq,
             )
-
         except Exception as e:
             logger.error("FRED get_indicator(%s) failed: %s", series_id, e)
             return None
 
     async def get_yield_curve(self) -> Optional[YieldCurve]:
-        """Fetch current yield curve (1M through 30Y Treasury yields)."""
         try:
             fred = self._get_client()
-            points = []
-            obs_dates = []
+            points, obs_dates = [], []
 
             for maturity, series_id in _YIELD_SERIES.items():
                 try:
                     series = fred.get_series(series_id, limit=5, sort_order="desc")
                     if series is None or series.empty:
                         continue
-
-                    # Get the most recent non-NaN value
-                    val = None
-                    obs_date = None
-                    for i in range(len(series) - 1, -1, -1):
-                        v = float(series.iloc[i])
-                        if not pd_is_nan(v):
-                            val = v
-                            obs_date = series.index[i].to_pydatetime()
-                            break
-
+                    val, obs_date = _first_valid(series)
                     if val is None:
                         continue
-
-                    if obs_date.tzinfo is None:
-                        obs_date = obs_date.replace(tzinfo=timezone.utc)
-
                     points.append(YieldCurvePoint(
-                        maturity=maturity,
-                        rate=val,
-                        series_id=series_id,
-                        observation_date=obs_date,
-                        source=_SOURCE,
+                        maturity=maturity, rate=val, series_id=series_id,
+                        observation_date=obs_date, source=_SOURCE,
                     ))
                     obs_dates.append(obs_date)
-
                 except Exception as e:
                     logger.debug("FRED yield curve %s failed: %s", series_id, e)
-                    continue
 
             if not points:
                 return None
 
-            as_of = max(obs_dates) if obs_dates else datetime.now(timezone.utc)
-
-            # Determine inversion: 2Y > 10Y
-            curve = YieldCurve(points=points, as_of=as_of, source=_SOURCE)
+            curve = YieldCurve(
+                points=points, as_of=max(obs_dates), source=_SOURCE,
+            )
             spread = curve.spread_10y_2y()
             if spread is not None:
                 curve.is_inverted = spread < 0
-
             return curve
-
         except Exception as e:
             logger.error("FRED get_yield_curve failed: %s", e)
             return None
-
-
-def pd_is_nan(value) -> bool:
-    """Safe NaN check that works without importing math."""
-    try:
-        import math
-        return math.isnan(value)
-    except (TypeError, ValueError):
-        return False
