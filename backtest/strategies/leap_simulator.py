@@ -252,15 +252,20 @@ class LEAPSimulator:
             pos = int(position.iloc[i])
 
             # ── Transition: cash → invested ──────────────────────────
+            # position[i]=1 means the signal fired at close[i-1], so we
+            # entered at yesterday's close and earn today's close-to-close return.
             if not in_market and pos == 1:
+                # Use previous close for entry price (i≥1 guaranteed by shift+fillna)
+                S_entry = float(close.iloc[i - 1]) if i > 0 else S
+                iv_entry = leap_iv_from_vix(float(vix_aligned.iloc[i - 1])) if i > 0 else iv
                 T_days = entry_ttm
                 K = find_strike_for_delta(
-                    S, T_days / 252.0, self.risk_free_rate, iv, self.delta_target
+                    S_entry, T_days / 252.0, self.risk_free_rate, iv_entry, self.delta_target
                 )
-                C = self._leap_price(S, K, T_days, iv)
-                C_ask = C * (1.0 + self.bid_ask_spread / 2.0)
+                C_entry = self._leap_price(S_entry, K, T_days, iv_entry)
+                C_ask = C_entry * (1.0 + self.bid_ask_spread / 2.0)
 
-                core_shares = (self.core_pct * portfolio) / S
+                core_shares = (self.core_pct * portfolio) / S_entry
                 leap_units = (self.leap_pct * portfolio) / max(C_ask, 1e-10)
                 leap_strike = K
                 days_held = 0
@@ -270,8 +275,23 @@ class LEAPSimulator:
                 days_held += 1
                 ttm_days = entry_ttm - days_held
 
-                # ── Roll ─────────────────────────────────────────────
-                if days_held >= roll_at:
+                # ── Transition: invested → cash — checked BEFORE roll ────
+                # Exiting on a roll day must NOT trigger a new LEAP purchase;
+                # we simply liquidate the existing position at the current bid.
+                if pos == 0:
+                    C_exit = self._leap_price(S, leap_strike, max(ttm_days, 1), iv)
+                    C_bid = C_exit * (1.0 - self.bid_ask_spread / 2.0)
+                    portfolio = core_shares * S + leap_units * C_bid
+
+                    in_market = False
+                    core_shares = 0.0
+                    leap_units = 0.0
+                    leap_strike = 0.0
+
+                    equity_values.append(portfolio)
+
+                # ── Roll (only when staying in market) ───────────────────
+                elif days_held >= roll_at:
                     # Sell old LEAP at bid
                     C_old = self._leap_price(S, leap_strike, max(ttm_days, 0), iv)
                     C_bid = C_old * (1.0 - self.bid_ask_spread / 2.0)
@@ -291,20 +311,12 @@ class LEAPSimulator:
                     days_held = 1          # today is day 1 of new LEAP
                     ttm_days = T_new - 1   # TTM after one day of the new LEAP
 
-                # ── Transition: invested → cash ──────────────────────
-                if pos == 0:
-                    C_exit = self._leap_price(S, leap_strike, max(ttm_days, 1), iv)
-                    C_bid = C_exit * (1.0 - self.bid_ask_spread / 2.0)
-                    portfolio = core_shares * S + leap_units * C_bid
+                    # ── Mark to market at mid after roll ─────────────────
+                    C_mid = self._leap_price(S, leap_strike, max(ttm_days, 1), iv)
+                    equity_values.append(core_shares * S + leap_units * C_mid)
 
-                    in_market = False
-                    core_shares = 0.0
-                    leap_units = 0.0
-                    leap_strike = 0.0
-
-                    equity_values.append(portfolio)
                 else:
-                    # ── Mark to market at mid ─────────────────────────
+                    # ── Mark to market at mid ─────────────────────────────
                     C_mid = self._leap_price(S, leap_strike, max(ttm_days, 1), iv)
                     equity_values.append(core_shares * S + leap_units * C_mid)
 
