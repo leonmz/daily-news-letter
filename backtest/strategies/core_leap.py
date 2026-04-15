@@ -1,7 +1,7 @@
 """Core Stock + LEAP Backtest Strategy.
 
 Orchestrates the full 30% Core + 70% LEAP backtest:
-  1. Load underlying prices + VIX
+  1. Load underlying prices + VIX6M (CBOE 6-month implied vol)
   2. Generate Basic_MA signal (SMA250, entry 1.04×, exit 0.95×)
   3. Simulate portfolio via LEAPSimulator
   4. Compute BacktestMetrics and return a BacktestResult
@@ -10,13 +10,6 @@ Validation targets for SPY SMA250, default params (from Google Sheet):
   CAGR    ≈ 25 %
   Sharpe  ≈ 0.64
   MaxDD   ≈ -63 %
-  Final   ≈ tens of millions from $1 M
-
-These numbers differ from flat 2.35x leverage (CAGR≈18 %, MaxDD≈-44 %)
-because the LEAP simulation models:
-  • theta decay (reduces returns slightly vs flat leverage)
-  • convexity protection on large down-moves (delta falls, loss smaller)
-  • roll transaction costs (bid-ask spread twice per 6 months)
 """
 
 from __future__ import annotations
@@ -71,11 +64,11 @@ class CoreLeapBacktest:
         -------
         BacktestResult  : equity_curve, trades, metrics, signal_history, position_history
         """
-        from backtest.data import load_ticker_data, load_vix_data
+        from backtest.data import load_ticker_data, load_vix6m_data
         from backtest.signals import basic_ma_signal
 
         prices = load_ticker_data(underlying, start=start, end=end)
-        vix = load_vix_data(start=start, end=end)
+        vix6m = load_vix6m_data(start=start, end=end)
 
         signal = basic_ma_signal(
             prices["close"],
@@ -84,29 +77,32 @@ class CoreLeapBacktest:
             exit_mult=exit_mult,
         )
 
-        return self._run_from_data(prices, vix, signal, initial_capital)
+        return self._run_from_data(prices, vix6m, signal, initial_capital)
 
     def run_from_data(
         self,
         prices: pd.DataFrame,
-        vix: pd.DataFrame,
+        vol_index: pd.DataFrame,
         signal: pd.Series,
         initial_capital: float = 1_000_000,
+        iv_convert: callable | None = None,
     ) -> BacktestResult:
         """Run backtest from pre-loaded data (useful for testing without live API).
 
         Parameters
         ----------
         prices         : DataFrame with 'close' column
-        vix            : DataFrame with 'close' column (VIX %, e.g. 20.5)
+        vol_index      : DataFrame with 'close' column — VIX6M (%) or VIX (%)
         signal         : pd.Series of 1/0 aligned with prices.index
         initial_capital: starting portfolio value
+        iv_convert     : callable(pct) -> decimal IV.  Default: vix6m_to_iv.
+                         Pass ``leap_iv_from_vix`` for legacy 30-day VIX data.
 
         Returns
         -------
         BacktestResult
         """
-        return self._run_from_data(prices, vix, signal, initial_capital)
+        return self._run_from_data(prices, vol_index, signal, initial_capital, iv_convert)
 
     # ------------------------------------------------------------------
     # Internal
@@ -115,20 +111,20 @@ class CoreLeapBacktest:
     def _run_from_data(
         self,
         prices: pd.DataFrame,
-        vix: pd.DataFrame,
+        vol_index: pd.DataFrame,
         signal: pd.Series,
         initial_capital: float,
+        iv_convert: callable | None = None,
     ) -> BacktestResult:
-        equity_curve = self.simulator.simulate(prices, vix, signal, initial_capital)
+        equity_curve = self.simulator.simulate(
+            prices, vol_index, signal, initial_capital, iv_convert=iv_convert,
+        )
 
         position = signal.shift(1).fillna(0)
 
-        # Daily returns for Sharpe calculation
-        daily_returns = equity_curve.pct_change().fillna(0)
-        strategy_returns = pd.Series(
-            np.where(position == 1, daily_returns.values, 0.0),
-            index=equity_curve.index,
-        )
+        # Daily returns for Sharpe — equity_curve already reflects cash (flat)
+        # and invested (option P&L) states, so no position mask needed.
+        strategy_returns = equity_curve.pct_change().fillna(0)
 
         trades = self._identify_trades(equity_curve, position)
 

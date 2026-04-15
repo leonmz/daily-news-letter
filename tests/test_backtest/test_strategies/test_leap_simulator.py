@@ -14,6 +14,7 @@ from backtest.strategies.leap_simulator import (
     bs_call_price,
     find_strike_for_delta,
     leap_iv_from_vix,
+    vix6m_to_iv,
 )
 
 
@@ -173,67 +174,75 @@ class TestLeapIVFromVix(unittest.TestCase):
             self.assertGreater(leap_iv_from_vix(vix), 0.0)
 
 
+class TestVix6mToIv(unittest.TestCase):
+    def test_simple_conversion(self):
+        self.assertAlmostEqual(vix6m_to_iv(22.5), 0.225)
+
+    def test_floor(self):
+        """IV never goes below 5% even if VIX6M is absurdly low."""
+        self.assertAlmostEqual(vix6m_to_iv(0.0), 0.05)
+        self.assertAlmostEqual(vix6m_to_iv(2.0), 0.05)
+
+    def test_high_vol(self):
+        self.assertAlmostEqual(vix6m_to_iv(40.0), 0.40)
+
+
 # ---------------------------------------------------------------------------
 # LEAPSimulator — full simulation on synthetic data
 # ---------------------------------------------------------------------------
 
 class TestLEAPSimulatorFullRun(unittest.TestCase):
-    """Smoke tests: verify shapes, monotonicity, and cash handling."""
+    """Smoke tests: verify shapes, monotonicity, and cash handling.
+
+    Tests pass synthetic 30-day VIX values, so we use iv_convert=leap_iv_from_vix.
+    """
 
     def setUp(self):
-        # 100 business days of flat price at 400; VIX constant at 20
         n = 100
         self.prices = _make_prices([400.0] * n)
         self.vix = _make_vix(20.0, n)
         self.sim = LEAPSimulator()
+        self._iv = leap_iv_from_vix
 
     def test_equity_curve_length(self):
         signal = _make_signal([1] * 100)
-        equity = self.sim.simulate(self.prices, self.vix, signal, 1_000_000)
+        equity = self.sim.simulate(self.prices, self.vix, signal, 1_000_000, iv_convert=self._iv)
         self.assertEqual(len(equity), 100)
 
     def test_always_in_cash_stays_flat(self):
         """Signal=0 throughout → portfolio stays at initial capital."""
         signal = _make_signal([0] * 100)
-        equity = self.sim.simulate(self.prices, self.vix, signal, 1_000_000)
-        # All values should be exactly 1_000_000 (no position taken)
+        equity = self.sim.simulate(self.prices, self.vix, signal, 1_000_000, iv_convert=self._iv)
         self.assertTrue((equity == 1_000_000).all())
 
     def test_entry_on_signal(self):
         """Signal switches from 0→1: portfolio should change after position lag."""
         signal = _make_signal([0] * 10 + [1] * 90)
-        equity = self.sim.simulate(self.prices, self.vix, signal, 1_000_000)
-        # First 10+1 days in cash (position lags by 1)
+        equity = self.sim.simulate(self.prices, self.vix, signal, 1_000_000, iv_convert=self._iv)
         self.assertAlmostEqual(float(equity.iloc[10]), 1_000_000, places=0)
 
     def test_rising_price_increases_portfolio(self):
         """Steadily rising underlying should increase portfolio value."""
         prices = _make_prices([400.0 * (1.001 ** i) for i in range(100)])
         signal = _make_signal([0] + [1] * 99)
-        equity = self.sim.simulate(prices, self.vix, signal, 1_000_000)
+        equity = self.sim.simulate(prices, self.vix, signal, 1_000_000, iv_convert=self._iv)
         self.assertGreater(float(equity.iloc[-1]), 1_000_000)
 
     def test_falling_price_decreases_portfolio(self):
         """Steadily falling underlying should decrease portfolio value."""
         prices = _make_prices([400.0 * (0.999 ** i) for i in range(100)])
         signal = _make_signal([0] + [1] * 99)
-        equity = self.sim.simulate(prices, self.vix, signal, 1_000_000)
+        equity = self.sim.simulate(prices, self.vix, signal, 1_000_000, iv_convert=self._iv)
         self.assertLess(float(equity.iloc[-1]), 1_000_000)
 
     def test_exit_crystalises_loss(self):
         """Going out of market after a fall should lock in the loss and stay flat."""
-        # Price falls for 30 days then signal exits; 10 more days in cash
-        # signal: [0] + [1]*29 + [0]*10 → with shift, position enters on day 2
-        # Exit happens on day 31 (first pos=0 after being in market)
-        # Days 32-39: fully in cash → equity must stay constant
         vals = [400.0 * (0.995 ** i) for i in range(30)] + [400.0 * (0.995 ** 29)] * 10
         prices = _make_prices(vals)
         vix = _make_vix(20.0, len(vals))
         signal = _make_signal([0] + [1] * 29 + [0] * 10)
-        equity = self.sim.simulate(prices, vix, signal, 1_000_000)
-        # Should have taken a loss while in market
+        equity = self.sim.simulate(prices, vix, signal, 1_000_000, iv_convert=self._iv)
         self.assertLess(float(equity.iloc[29]), 1_000_000)
-        # Day 31 = first full cash day after exit; days 32-39 must be identical
         for i in range(32, 40):
             self.assertAlmostEqual(
                 float(equity.iloc[31]), float(equity.iloc[i]), places=2,
@@ -244,6 +253,27 @@ class TestLEAPSimulatorFullRun(unittest.TestCase):
         """core_pct + leap_pct != 1.0 should raise ValueError."""
         with self.assertRaises(ValueError):
             LEAPSimulator(core_pct=0.40, leap_pct=0.40)
+
+    def test_invalid_roll_gt_expiry_raises(self):
+        """roll_months > expiry_months should raise ValueError."""
+        with self.assertRaises(ValueError):
+            LEAPSimulator(roll_months=8, expiry_months=6)
+
+    def test_reentry_after_exit(self):
+        """Exit then re-enter: portfolio should survive the cash gap."""
+        n = 80
+        vals = [400.0 * (1.001 ** i) for i in range(n)]
+        prices = _make_prices(vals)
+        vix = _make_vix(20.0, n)
+        signal = _make_signal([0] + [1]*20 + [0]*20 + [1]*39)
+        sim = LEAPSimulator()
+        equity = sim.simulate(prices, vix, signal, 1_000_000, iv_convert=self._iv)
+        self.assertGreater(float(equity.iloc[-1]), 1_000_000)
+        for i in range(23, 41):
+            self.assertAlmostEqual(
+                float(equity.iloc[22]), float(equity.iloc[i]), places=0,
+                msg=f"Cash period should be flat on day {i}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -271,8 +301,8 @@ class TestRollCost(unittest.TestCase):
             bid_ask_spread=0.0,
         )
 
-        equity_spread = sim_with_spread.simulate(prices, vix, signal, 1_000_000)
-        equity_no_spread = sim_no_spread.simulate(prices, vix, signal, 1_000_000)
+        equity_spread = sim_with_spread.simulate(prices, vix, signal, 1_000_000, iv_convert=leap_iv_from_vix)
+        equity_no_spread = sim_no_spread.simulate(prices, vix, signal, 1_000_000, iv_convert=leap_iv_from_vix)
 
         # With spread, end value must be ≤ no-spread (theta ~equal; spread adds cost)
         self.assertLessEqual(float(equity_spread.iloc[-1]), float(equity_no_spread.iloc[-1]))
@@ -299,7 +329,7 @@ class TestFlatVsLEAP(unittest.TestCase):
     def _run_leap(self, prices: pd.DataFrame, signal: pd.Series, initial: float = 1_000_000):
         vix = _make_vix(20.0, len(prices), start=str(prices.index[0].date()))
         sim = LEAPSimulator()
-        return sim.simulate(prices, vix, signal, initial)
+        return sim.simulate(prices, vix, signal, initial, iv_convert=leap_iv_from_vix)
 
     def test_leap_differs_from_flat_leverage(self):
         """
