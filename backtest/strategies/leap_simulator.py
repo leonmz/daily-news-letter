@@ -1,14 +1,18 @@
 """LEAP Call Option Simulator.
 
 Black-Scholes based simulation of deep-ITM LEAP calls (delta ~0.80, 6-month expiry)
-with historical VIX as the IV proxy.  Used by CoreLeapBacktest to model the
+with CBOE VIX6M (^VIX6M) as the IV proxy.  Used by CoreLeapBacktest to model the
 30% Core Stock + 70% LEAP strategy.
 
-IV term-structure adjustment
------------------------------
-LEAPs have lower implied vol than 30-day options because markets mean-revert.
-  LEAP_IV = VIX_decimal × 0.70  +  0.15 × 0.30
-Example: VIX=20 → LEAP_IV = 0.14 + 0.045 = 18.5%
+IV source
+---------
+Primary: ^VIX6M — CBOE's 6-month implied volatility index, available from 2008.
+The simulator receives VIX6M values directly (percentage points, e.g. 22.5) and
+converts to decimal IV by dividing by 100.  No term-structure adjustment needed
+since VIX6M already measures the 6-month horizon.
+
+Fallback: for pre-2008 data or testing, ``leap_iv_from_vix()`` approximates
+VIX6M from 30-day VIX using a linear model (see backtest/data.py).
 
 Signal convention (matches BacktestEngine)
 ------------------------------------------
@@ -118,17 +122,25 @@ def find_strike_for_delta(
     return float(K)
 
 
+def vix6m_to_iv(vix6m_pct: float) -> float:
+    """Convert VIX6M (percentage, e.g. 22.5) to LEAP IV (decimal, e.g. 0.225).
+
+    VIX6M is already a 6-month implied volatility measure, so no term-structure
+    adjustment is needed — just convert from percentage to decimal and apply a
+    floor to prevent degenerate BS pricing.
+    """
+    return max(vix6m_pct / 100.0, 0.05)
+
+
 def leap_iv_from_vix(vix_pct: float) -> float:
-    """Convert 30-day VIX (percentage, e.g. 20.5) to 6-month LEAP IV (decimal).
+    """DEPRECATED — legacy fallback for tests that pass 30-day VIX directly.
+
+    Convert 30-day VIX (percentage, e.g. 20.5) to 6-month LEAP IV (decimal).
+    In production the simulator now receives VIX6M data directly; this function
+    is only called by unit tests with synthetic VIX data.
 
     Term-structure adjustment:
         LEAP_IV = VIX_decimal × 0.70  +  0.15 × 0.30
-
-    Examples
-    --------
-    vix_pct=15  →  0.15×0.7 + 0.045 = 0.150
-    vix_pct=20  →  0.20×0.7 + 0.045 = 0.185
-    vix_pct=40  →  0.40×0.7 + 0.045 = 0.325
     """
     vix_decimal = vix_pct / 100.0
     return vix_decimal * 0.70 + 0.15 * 0.30
@@ -182,6 +194,10 @@ class LEAPSimulator:
 
         if abs(core_pct + leap_pct - 1.0) > 1e-6:
             raise ValueError(f"core_pct + leap_pct must equal 1.0, got {core_pct + leap_pct}")
+        if roll_months > expiry_months:
+            raise ValueError(
+                f"roll_months ({roll_months}) must be <= expiry_months ({expiry_months})"
+            )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -189,7 +205,9 @@ class LEAPSimulator:
 
     def _leap_price(self, S: float, K: float, ttm_trading_days: int, iv: float) -> float:
         """Price a LEAP using BS, converting trading-day TTM to years."""
-        ttm_years = max(ttm_trading_days, 1) / 252.0
+        if ttm_trading_days <= 0:
+            return max(S - K, 0.0)  # expired: intrinsic value
+        ttm_years = ttm_trading_days / 252.0
         return bs_call_price(S, K, ttm_years, self.risk_free_rate, iv)
 
     def _entry_leap_ttm(self) -> int:
@@ -207,27 +225,35 @@ class LEAPSimulator:
     def simulate(
         self,
         prices: pd.DataFrame,
-        vix: pd.DataFrame,
+        vol_index: pd.DataFrame,
         signal: pd.Series,
         initial_capital: float = 1_000_000,
+        iv_convert: callable | None = None,
     ) -> pd.Series:
         """Simulate Core + LEAP portfolio over the price history.
 
         Parameters
         ----------
         prices          : DataFrame with a 'close' column (underlying price)
-        vix             : DataFrame with a 'close' column (VIX in %, e.g. 20.5)
+        vol_index       : DataFrame with a 'close' column — the volatility index
+                          in percentage points (e.g. VIX6M=22.5 or VIX=20.0).
         signal          : pd.Series of 1/0 aligned with prices.index
         initial_capital : starting portfolio value in dollars
+        iv_convert      : callable(pct) -> decimal IV.
+                          Default ``vix6m_to_iv`` (just divides by 100).
+                          Pass ``leap_iv_from_vix`` for legacy 30-day VIX data.
 
         Returns
         -------
         pd.Series : daily equity curve indexed by the same DatetimeIndex as prices
         """
+        if iv_convert is None:
+            iv_convert = vix6m_to_iv
+
         close = prices["close"]
 
-        # Align VIX to price dates; forward-fill then back-fill any leading gaps
-        vix_aligned = vix["close"].reindex(close.index).ffill().bfill()
+        # Align vol index to price dates; forward-fill then back-fill any gaps
+        vol_aligned = vol_index["close"].reindex(close.index).ffill().bfill()
 
         # Signal shift: position[i] = signal[i-1]  (no look-ahead)
         position = signal.shift(1).fillna(0)
@@ -247,8 +273,8 @@ class LEAPSimulator:
 
         for i in range(len(close)):
             S = float(close.iloc[i])
-            vix_pct = float(vix_aligned.iloc[i])
-            iv = leap_iv_from_vix(vix_pct)
+            vol_pct = float(vol_aligned.iloc[i])
+            iv = iv_convert(vol_pct)
             pos = int(position.iloc[i])
 
             # ── Transition: cash → invested ──────────────────────────
@@ -257,7 +283,7 @@ class LEAPSimulator:
             if not in_market and pos == 1:
                 # Use previous close for entry price (i≥1 guaranteed by shift+fillna)
                 S_entry = float(close.iloc[i - 1]) if i > 0 else S
-                iv_entry = leap_iv_from_vix(float(vix_aligned.iloc[i - 1])) if i > 0 else iv
+                iv_entry = iv_convert(float(vol_aligned.iloc[i - 1])) if i > 0 else iv
                 T_days = entry_ttm
                 K = find_strike_for_delta(
                     S_entry, T_days / 252.0, self.risk_free_rate, iv_entry, self.delta_target
@@ -266,7 +292,8 @@ class LEAPSimulator:
                 C_ask = C_entry * (1.0 + self.bid_ask_spread / 2.0)
 
                 core_shares = (self.core_pct * portfolio) / S_entry
-                leap_units = (self.leap_pct * portfolio) / max(C_ask, 1e-10)
+                # Floor at 1% of spot to avoid overflow from near-zero premiums
+                leap_units = (self.leap_pct * portfolio) / max(C_ask, 0.01 * S_entry)
                 leap_strike = K
                 days_held = 0
                 in_market = True
@@ -279,7 +306,7 @@ class LEAPSimulator:
                 # Exiting on a roll day must NOT trigger a new LEAP purchase;
                 # we simply liquidate the existing position at the current bid.
                 if pos == 0:
-                    C_exit = self._leap_price(S, leap_strike, max(ttm_days, 1), iv)
+                    C_exit = self._leap_price(S, leap_strike, max(ttm_days, 0), iv)
                     C_bid = C_exit * (1.0 - self.bid_ask_spread / 2.0)
                     portfolio = core_shares * S + leap_units * C_bid
 
@@ -306,18 +333,18 @@ class LEAPSimulator:
                     C_new_ask = C_new * (1.0 + self.bid_ask_spread / 2.0)
 
                     core_shares = (self.core_pct * portfolio) / S
-                    leap_units = (self.leap_pct * portfolio) / max(C_new_ask, 1e-10)
+                    leap_units = (self.leap_pct * portfolio) / max(C_new_ask, 0.01 * S)
                     leap_strike = K_new
                     days_held = 1          # today is day 1 of new LEAP
                     ttm_days = T_new - 1   # TTM after one day of the new LEAP
 
                     # ── Mark to market at mid after roll ─────────────────
-                    C_mid = self._leap_price(S, leap_strike, max(ttm_days, 1), iv)
+                    C_mid = self._leap_price(S, leap_strike, max(ttm_days, 0), iv)
                     equity_values.append(core_shares * S + leap_units * C_mid)
 
                 else:
                     # ── Mark to market at mid ─────────────────────────────
-                    C_mid = self._leap_price(S, leap_strike, max(ttm_days, 1), iv)
+                    C_mid = self._leap_price(S, leap_strike, max(ttm_days, 0), iv)
                     equity_values.append(core_shares * S + leap_units * C_mid)
 
             else:
