@@ -15,6 +15,9 @@ FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
 # FRED
 FRED_API_KEY = os.getenv("FRED_API_KEY", "")
 
+# Databento
+DATABENTO_API_KEY = os.getenv("DATABENTO_API_KEY", "")
+
 # yfinance needs no key
 
 # Market cap / volume filters for top movers

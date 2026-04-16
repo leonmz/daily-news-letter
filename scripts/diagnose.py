@@ -305,6 +305,55 @@ async def check_cboe():
         check("Find 0.85δ LEAP call NVDA", False, err2 or "no match")
 
 
+# ─── Databento ──────────────────────────────────────────────────────────────
+
+async def check_databento():
+    api_key = os.getenv("DATABENTO_API_KEY", "")
+
+    print(f"\n{BOLD}[Databento]{RESET}")
+
+    if not api_key:
+        for lbl in ["Expirations SPY", "Options chain SPY (OPRA)", "Historical option chain SPY"]:
+            check(lbl, False, skipped=True)
+        return
+
+    from data.providers.databento_provider import DatabentoProvider
+    p = DatabentoProvider(api_key)
+
+    # Expirations
+    exps, elapsed, err = await timed(p.get_expirations("SPY"))
+    if exps:
+        check("Expirations SPY", True, f"{len(exps)} expirations ({elapsed:.0f}s)")
+    else:
+        check("Expirations SPY", False, err or "no data")
+
+    # Current option chain
+    snap, elapsed2, err2 = await timed(p.get_option_chain("SPY", spot_price=550.0))
+    if snap and snap.calls:
+        greek_str = "Greeks ✅" if snap.has_greeks else "Greeks ❌ (no spot for IV)"
+        check(
+            "Options chain SPY (OPRA)",
+            True,
+            f"{len(snap.expirations)} exp, {snap.total_contracts} contracts, {greek_str} ({elapsed2:.0f}s)"
+        )
+    else:
+        check("Options chain SPY (OPRA)", False, err2 or "no data")
+
+    # Historical option chain (yesterday)
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    hsnap, elapsed3, err3 = await timed(
+        p.get_historical_option_chain("SPY", date=yesterday, spot_price=550.0)
+    )
+    if hsnap and hsnap.calls:
+        check(
+            "Historical option chain SPY",
+            True,
+            f"date={yesterday}, {hsnap.total_contracts} contracts ({elapsed3:.0f}s)"
+        )
+    else:
+        check("Historical option chain SPY", False, err3 or "no data")
+
+
 # ─── Cross-checks ─────────────────────────────────────────────────────────────
 
 def cross_check_price(
@@ -357,6 +406,7 @@ async def main():
     yfinance_nvda = await check_yfinance()
     await check_fred()
     await check_cboe()
+    await check_databento()
 
     # Cross-checks
     print(f"\n{BOLD}[Cross-checks]{RESET}")
