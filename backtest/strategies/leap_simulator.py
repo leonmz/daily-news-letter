@@ -150,6 +150,39 @@ def leap_iv_from_vix(vix_pct: float) -> float:
 # LEAP Simulator
 # ---------------------------------------------------------------------------
 
+class OptionPriceLookup:
+    """Pre-loaded historical option prices for market-data backtesting.
+
+    Instead of BS theoretical pricing, uses real bid/ask/mid from a data
+    provider (e.g. Databento).  Keyed by (date, strike, expiry).
+    """
+
+    def __init__(self, data: dict[tuple[str, float, str], tuple[float, float, float]]):
+        """data: {(date_str, strike, expiry) -> (bid, ask, mid)}"""
+        self._data = data
+
+    def lookup(
+        self, date: str, strike: float, expiry: str,
+    ) -> tuple[float, float, float] | None:
+        """Returns (bid, ask, mid) or None if not found."""
+        key = (date, round(strike, 2), expiry)
+        return self._data.get(key)
+
+    @classmethod
+    def from_snapshots(cls, snapshots: dict[str, "OptionsSnapshot"]) -> "OptionPriceLookup":
+        """Build from {date_str: OptionsSnapshot} dict."""
+        data = {}
+        for date_str, snap in snapshots.items():
+            for c in snap.calls + snap.puts:
+                if c.bid > 0 and c.ask > 0:
+                    mid = (c.bid + c.ask) / 2
+                    data[(date_str, round(c.strike, 2), c.expiry)] = (c.bid, c.ask, mid)
+        return cls(data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+
 class LEAPSimulator:
     """Simulates holding a deep-ITM LEAP call alongside a core stock position.
 
@@ -222,6 +255,35 @@ class LEAPSimulator:
     # Main simulation
     # ------------------------------------------------------------------
 
+    def _market_price(
+        self,
+        market_prices: OptionPriceLookup | None,
+        date_str: str,
+        strike: float,
+        expiry: str,
+        S: float,
+        K: float,
+        ttm_days: int,
+        iv: float,
+    ) -> tuple[float, float, float]:
+        """Return (bid, ask, mid) — from market data if available, else BS."""
+        if market_prices is not None:
+            result = market_prices.lookup(date_str, strike, expiry)
+            if result is not None:
+                return result
+        bs_mid = self._leap_price(S, K, ttm_days, iv)
+        bs_bid = bs_mid * (1.0 - self.bid_ask_spread / 2.0)
+        bs_ask = bs_mid * (1.0 + self.bid_ask_spread / 2.0)
+        return bs_bid, bs_ask, bs_mid
+
+    @staticmethod
+    def _pick_expiry(date_str: str, months_ahead: int) -> str:
+        """Approximate LEAP expiry date for a given entry date."""
+        from datetime import datetime, timedelta
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        target = dt + timedelta(days=months_ahead * 30)
+        return target.strftime("%Y-%m-%d")
+
     def simulate(
         self,
         prices: pd.DataFrame,
@@ -229,6 +291,7 @@ class LEAPSimulator:
         signal: pd.Series,
         initial_capital: float = 1_000_000,
         iv_convert: callable | None = None,
+        market_prices: OptionPriceLookup | None = None,
     ) -> pd.Series:
         """Simulate Core + LEAP portfolio over the price history.
 
@@ -242,6 +305,10 @@ class LEAPSimulator:
         iv_convert      : callable(pct) -> decimal IV.
                           Default ``vix6m_to_iv`` (just divides by 100).
                           Pass ``leap_iv_from_vix`` for legacy 30-day VIX data.
+        market_prices   : optional OptionPriceLookup with real historical
+                          bid/ask/mid. When provided, uses market data for
+                          entry/exit/roll/mark-to-market instead of BS.
+                          Falls back to BS for dates without market data.
 
         Returns
         -------
@@ -264,6 +331,7 @@ class LEAPSimulator:
         core_shares: float = 0.0
         leap_units: float = 0.0   # share-equivalent LEAP units held
         leap_strike: float = 0.0
+        leap_expiry: str = ""
         days_held: int = 0        # trading days since last entry / roll
 
         roll_at = self._roll_threshold()
@@ -276,25 +344,28 @@ class LEAPSimulator:
             vol_pct = float(vol_aligned.iloc[i])
             iv = iv_convert(vol_pct)
             pos = int(position.iloc[i])
+            date_str = close.index[i].strftime("%Y-%m-%d")
 
             # ── Transition: cash → invested ──────────────────────────
-            # position[i]=1 means the signal fired at close[i-1], so we
-            # entered at yesterday's close and earn today's close-to-close return.
             if not in_market and pos == 1:
-                # Use previous close for entry price (i≥1 guaranteed by shift+fillna)
                 S_entry = float(close.iloc[i - 1]) if i > 0 else S
                 iv_entry = iv_convert(float(vol_aligned.iloc[i - 1])) if i > 0 else iv
+                entry_date = close.index[i - 1].strftime("%Y-%m-%d") if i > 0 else date_str
                 T_days = entry_ttm
                 K = find_strike_for_delta(
                     S_entry, T_days / 252.0, self.risk_free_rate, iv_entry, self.delta_target
                 )
-                C_entry = self._leap_price(S_entry, K, T_days, iv_entry)
-                C_ask = C_entry * (1.0 + self.bid_ask_spread / 2.0)
+                expiry = self._pick_expiry(entry_date, self.expiry_months)
+
+                _, C_ask, _ = self._market_price(
+                    market_prices, entry_date, K, expiry,
+                    S_entry, K, T_days, iv_entry,
+                )
 
                 core_shares = (self.core_pct * portfolio) / S_entry
-                # Floor at 1% of spot to avoid overflow from near-zero premiums
                 leap_units = (self.leap_pct * portfolio) / max(C_ask, 0.01 * S_entry)
                 leap_strike = K
+                leap_expiry = expiry
                 days_held = 0
                 in_market = True
 
@@ -302,49 +373,57 @@ class LEAPSimulator:
                 days_held += 1
                 ttm_days = entry_ttm - days_held
 
-                # ── Transition: invested → cash — checked BEFORE roll ────
-                # Exiting on a roll day must NOT trigger a new LEAP purchase;
-                # we simply liquidate the existing position at the current bid.
                 if pos == 0:
-                    C_exit = self._leap_price(S, leap_strike, max(ttm_days, 0), iv)
-                    C_bid = C_exit * (1.0 - self.bid_ask_spread / 2.0)
+                    C_bid, _, _ = self._market_price(
+                        market_prices, date_str, leap_strike, leap_expiry,
+                        S, leap_strike, max(ttm_days, 0), iv,
+                    )
                     portfolio = core_shares * S + leap_units * C_bid
 
                     in_market = False
                     core_shares = 0.0
                     leap_units = 0.0
                     leap_strike = 0.0
+                    leap_expiry = ""
 
                     equity_values.append(portfolio)
 
-                # ── Roll (only when staying in market) ───────────────────
                 elif days_held >= roll_at:
-                    # Sell old LEAP at bid
-                    C_old = self._leap_price(S, leap_strike, max(ttm_days, 0), iv)
-                    C_bid = C_old * (1.0 - self.bid_ask_spread / 2.0)
+                    C_bid, _, _ = self._market_price(
+                        market_prices, date_str, leap_strike, leap_expiry,
+                        S, leap_strike, max(ttm_days, 0), iv,
+                    )
                     portfolio = core_shares * S + leap_units * C_bid
 
-                    # Buy new LEAP at ask, rebalance to core_pct/leap_pct
                     T_new = entry_ttm
                     K_new = find_strike_for_delta(
                         S, T_new / 252.0, self.risk_free_rate, iv, self.delta_target
                     )
-                    C_new = self._leap_price(S, K_new, T_new, iv)
-                    C_new_ask = C_new * (1.0 + self.bid_ask_spread / 2.0)
+                    new_expiry = self._pick_expiry(date_str, self.expiry_months)
+
+                    _, C_new_ask, _ = self._market_price(
+                        market_prices, date_str, K_new, new_expiry,
+                        S, K_new, T_new, iv,
+                    )
 
                     core_shares = (self.core_pct * portfolio) / S
                     leap_units = (self.leap_pct * portfolio) / max(C_new_ask, 0.01 * S)
                     leap_strike = K_new
-                    days_held = 1          # today is day 1 of new LEAP
-                    ttm_days = T_new - 1   # TTM after one day of the new LEAP
+                    leap_expiry = new_expiry
+                    days_held = 1
+                    ttm_days = T_new - 1
 
-                    # ── Mark to market at mid after roll ─────────────────
-                    C_mid = self._leap_price(S, leap_strike, max(ttm_days, 0), iv)
+                    _, _, C_mid = self._market_price(
+                        market_prices, date_str, leap_strike, leap_expiry,
+                        S, leap_strike, max(ttm_days, 0), iv,
+                    )
                     equity_values.append(core_shares * S + leap_units * C_mid)
 
                 else:
-                    # ── Mark to market at mid ─────────────────────────────
-                    C_mid = self._leap_price(S, leap_strike, max(ttm_days, 0), iv)
+                    _, _, C_mid = self._market_price(
+                        market_prices, date_str, leap_strike, leap_expiry,
+                        S, leap_strike, max(ttm_days, 0), iv,
+                    )
                     equity_values.append(core_shares * S + leap_units * C_mid)
 
             else:

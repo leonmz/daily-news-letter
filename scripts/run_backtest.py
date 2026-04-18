@@ -123,6 +123,41 @@ def run_compare_signals(args: argparse.Namespace) -> None:
     print(df.to_string(index=False))
 
 
+def run_calibrate(args: argparse.Namespace) -> None:
+    import asyncio
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    api_key = os.getenv("DATABENTO_API_KEY", "")
+    if not api_key:
+        print("Error: DATABENTO_API_KEY not set in .env")
+        print("Sign up at https://databento.com (free $125 credits)")
+        sys.exit(1)
+
+    import pandas as pd
+    from backtest.calibration import BSCalibrator
+
+    ticker = args.underlying.upper()
+    dates = pd.date_range(start=args.cal_start, end=args.cal_end, freq="WOM-3WED")
+    date_list = [d.strftime("%Y-%m-%d") for d in dates]
+
+    if not date_list:
+        print(f"No valid dates in range {args.cal_start} to {args.cal_end}")
+        sys.exit(1)
+
+    print(f"Calibrating BS pricing for {ticker} across {len(date_list)} dates...")
+
+    calibrator = BSCalibrator(databento_api_key=api_key)
+    report = asyncio.run(calibrator.calibrate(
+        ticker=ticker, dates=date_list,
+    ))
+    report.print_summary()
+
+    if not report.points:
+        print("No calibration data — check API key and date range (OPRA data from 2013-04)")
+
+
 def _save_plot(result, label: str, output: str | None) -> None:
     try:
         import matplotlib.pyplot as plt
@@ -216,10 +251,27 @@ def main() -> None:
         metavar="X",
         help="Exit threshold multiplier on SMA (default: 0.95)",
     )
+    parser.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="Run BS calibration against real Databento option prices",
+    )
+    parser.add_argument(
+        "--cal-start",
+        default="2024-01-01",
+        help="Calibration start date (default: 2024-01-01)",
+    )
+    parser.add_argument(
+        "--cal-end",
+        default="2024-12-31",
+        help="Calibration end date (default: 2024-12-31)",
+    )
 
     args = parser.parse_args()
 
-    if args.compare_sma:
+    if args.calibrate:
+        run_calibrate(args)
+    elif args.compare_sma:
         run_compare_sma(args)
     elif args.compare_signals:
         run_compare_signals(args)

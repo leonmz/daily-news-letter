@@ -19,7 +19,7 @@ import pandas as pd
 
 from backtest.engine import BacktestResult, Trade
 from backtest.metrics import BacktestMetrics, calculate_metrics
-from backtest.strategies.leap_simulator import LEAPSimulator
+from backtest.strategies.leap_simulator import LEAPSimulator, OptionPriceLookup
 
 
 class CoreLeapBacktest:
@@ -86,6 +86,7 @@ class CoreLeapBacktest:
         signal: pd.Series,
         initial_capital: float = 1_000_000,
         iv_convert: callable | None = None,
+        market_prices: OptionPriceLookup | None = None,
     ) -> BacktestResult:
         """Run backtest from pre-loaded data (useful for testing without live API).
 
@@ -97,12 +98,15 @@ class CoreLeapBacktest:
         initial_capital: starting portfolio value
         iv_convert     : callable(pct) -> decimal IV.  Default: vix6m_to_iv.
                          Pass ``leap_iv_from_vix`` for legacy 30-day VIX data.
+        market_prices  : optional OptionPriceLookup for market-data mode.
 
         Returns
         -------
         BacktestResult
         """
-        return self._run_from_data(prices, vol_index, signal, initial_capital, iv_convert)
+        return self._run_from_data(
+            prices, vol_index, signal, initial_capital, iv_convert, market_prices,
+        )
 
     # ------------------------------------------------------------------
     # Internal
@@ -115,9 +119,11 @@ class CoreLeapBacktest:
         signal: pd.Series,
         initial_capital: float,
         iv_convert: callable | None = None,
+        market_prices: OptionPriceLookup | None = None,
     ) -> BacktestResult:
         equity_curve = self.simulator.simulate(
-            prices, vol_index, signal, initial_capital, iv_convert=iv_convert,
+            prices, vol_index, signal, initial_capital,
+            iv_convert=iv_convert, market_prices=market_prices,
         )
 
         position = signal.shift(1).fillna(0)
