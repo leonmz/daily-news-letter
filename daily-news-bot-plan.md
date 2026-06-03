@@ -143,6 +143,79 @@ Phase 3 danuglipron trial missed primary endpoint.
 
 ---
 
+## V1.7：QQQ/SPY SMA Calculation Library（branch: claude/add-moving-average-analysis-LSYkp）
+
+### 范围
+**Library only — 不接入 daily digest 推送。** 提供 SPY/QQQ 相对 4 条均线（SMA 50/100/200/250）的计算能力（compute + format + fetch），供外部任意调用方（CLI、Bot 命令、未来推送、ad-hoc 脚本）按需复用。是否要把输出推到 Telegram 由调用方决定，本模块不绑定 newsletter pipeline。
+
+### 动机
+SPY/QQQ 多档均线对比是常用的趋势结构视图。背后的 200 日均线择时价值由 19 年 QLD 回测验证；其余 3 条提供完整的短/中/长期趋势视图。把这层做成纯计算 + 渲染的库，避免任何调用方都得自己重新写一遍。
+
+### 回测得出的结论（决定本模块设计的依据）
+- QLD + SMA200 pure-cross 二档（above SMA200 → QLD, below → SHY）是 risk-adjusted 最优：
+  - CAGR 20.4%, Sharpe 0.72, MaxDD -43.3%, $1M → $37.65M（2006-2025 实测）
+- 加 SMA50 中间档（QLD/QQQ/SHY 三档）：略改善 MaxDD（-35%），但 336 次切换吃掉所有 alpha
+- 加 stretch overlay（拉伸 >18% 降杠杆）：60d/180d/360d 前瞻数据完全否定 mean-reversion 假设，**stretch 高之后未来 6-12 个月反而平均涨更多**（Jegadeesh-Titman momentum）。360d ≥18% 样本 91% 正回报、平均 +26.8%
+- 结论：择时只用 SMA200 binary 信号；其余均线**仅作展示**，不做花式叠加
+
+### 展示哪些均线
+- **SMA50** — 短期趋势
+- **SMA100** — 中期趋势
+- **SMA200** — 牛熊分水岭（唯一有回测验证的择时线）
+- **SMA250** — 约 1 年均线（年度趋势基准）
+
+### 数据流
+```
+[yfinance Ticker(QQQ/SPY).history(period=500d)] ──→ Close (~350 trading days)
+                                                  │
+                              ┌──────────────────┴────────────────┐
+                              ▼                                    ▼
+                    SMA 50/100/200/250 (rolling)            price[-1]
+                              │                                    │
+                              └─────────────┬──────────────────────┘
+                                            ▼
+                              MAComparison {
+                                 ticker, price,
+                                 levels: [MALevel(period, value,
+                                          deviation_pct, above), ...]
+                              }
+                                            │
+                                            ▼
+                              format_ma_section()
+                                            │
+                                            ▼
+                              拼到 pipeline.generate_digest()
+```
+
+### 输出格式示例
+```
+## 📈 SMA Comparison
+**QQQ** $498.50
+  🟢 SMA50  $475.20  +4.9%
+  🟢 SMA100 $463.10  +7.6%
+  🟢 SMA200 $448.30  +11.2%
+  🟢 SMA250 $440.10  +13.3%
+**SPY** $581.20
+  🟢 SMA50  $565.10  +2.8%
+  🟢 SMA100 $558.40  +4.1%
+  🟢 SMA200 $548.90  +5.9%
+  🔴 SMA250 $590.10  -1.5%
+```
+
+### 修改文件
+- `newsletter/moving_averages.py` — compute_ma_comparison 纯函数 + fetch_ma_comparisons 拉数据 + format_ma_section 输出 Markdown
+- `tests/test_newsletter/test_moving_averages.py` — 单测（合成 OHLCV，无 yfinance 调用）
+- `.github/workflows/backtest-qld.yml` — 在 CI 上跑 live yfinance smoke test 验证计算路径
+
+### 不修改
+- `newsletter/pipeline.py` — **不集成进 digest**，由调用方按需使用
+
+### API 用量
+- yfinance Ticker(QQQ/SPY).history(period=500d) — 每天 2 次调用，无配额限制，无新增 key
+- 500 自然日 ≈ 350 交易日，给 SMA250 留 ~100 天余量
+
+---
+
 ## V2：Watchlist + Breaking News（Phase 2）
 
 ### 新增功能
