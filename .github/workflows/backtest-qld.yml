@@ -81,6 +81,13 @@ jobs:
             --plot --output stretch_overlay.png \
           | tee stretch_overlay.txt
 
+      - name: Run stretch-overlay diagnostic with 180d forward window
+        run: |
+          python scripts/backtest_stretch_overlay.py \
+            --fwd-days 180 \
+            --plot --output stretch_overlay_180d.png \
+          | tee stretch_overlay_180d.txt
+
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
@@ -98,4 +105,6 @@ jobs:
             apples_to_apples_2x.png
             stretch_overlay.txt
             stretch_overlay.png
+            stretch_overlay_180d.txt
+            stretch_overlay_180d.png
           retention-days: 30
