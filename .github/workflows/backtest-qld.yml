@@ -19,6 +19,7 @@ on:
       - "scripts/backtest_qld_sma.py"
       - "scripts/backtest_qld_qqq_shy_sma.py"
       - "scripts/backtest_apples_to_apples_2x.py"
+      - "scripts/backtest_stretch_overlay.py"
       - "backtest/**"
       - ".github/workflows/backtest-qld.yml"
 
@@ -74,6 +75,12 @@ jobs:
             --plot --output apples_to_apples_2x.png \
           | tee apples_to_apples_2x.txt
 
+      - name: Run stretch-overlay strategy (de-lever when QQQ stretched > X% above SMA200)
+        run: |
+          python scripts/backtest_stretch_overlay.py \
+            --plot --output stretch_overlay.png \
+          | tee stretch_overlay.txt
+
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
@@ -89,4 +96,6 @@ jobs:
             qld_qqq_shy_pure_cross.png
             apples_to_apples_2x.txt
             apples_to_apples_2x.png
+            stretch_overlay.txt
+            stretch_overlay.png
           retention-days: 30
