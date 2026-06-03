@@ -18,6 +18,7 @@ on:
     paths:
       - "scripts/backtest_qld_sma.py"
       - "scripts/backtest_qld_qqq_shy_sma.py"
+      - "scripts/backtest_apples_to_apples_2x.py"
       - "backtest/**"
       - ".github/workflows/backtest-qld.yml"
 
@@ -67,6 +68,12 @@ jobs:
             --plot --output qld_qqq_shy_pure_cross.png \
           | tee qld_qqq_shy_pure_cross.txt
 
+      - name: Run apples-to-apples 2x QQQ comparison (QLD vs daily-reset vs path-indep)
+        run: |
+          python scripts/backtest_apples_to_apples_2x.py \
+            --plot --output apples_to_apples_2x.png \
+          | tee apples_to_apples_2x.txt
+
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
@@ -80,4 +87,6 @@ jobs:
             qld_qqq_shy_hysteresis.png
             qld_qqq_shy_pure_cross.txt
             qld_qqq_shy_pure_cross.png
+            apples_to_apples_2x.txt
+            apples_to_apples_2x.png
           retention-days: 30
