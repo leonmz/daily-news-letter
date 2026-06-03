@@ -20,6 +20,7 @@ on:
       - "scripts/backtest_qld_qqq_shy_sma.py"
       - "scripts/backtest_apples_to_apples_2x.py"
       - "scripts/backtest_stretch_overlay.py"
+      - "newsletter/moving_averages.py"
       - "backtest/**"
       - ".github/workflows/backtest-qld.yml"
 
@@ -95,6 +96,27 @@ jobs:
             --plot --output stretch_overlay_360d.png \
           | tee stretch_overlay_360d.txt
 
+      - name: Smoke test newsletter.moving_averages against live yfinance
+        run: |
+          python -c "
+          from newsletter.moving_averages import fetch_ma_comparisons, format_ma_section, SMA_PERIODS
+          comparisons = fetch_ma_comparisons()
+          assert comparisons, 'fetch_ma_comparisons returned empty'
+          assert len(comparisons) == 2, f'expected 2 tickers, got {len(comparisons)}'
+          for c in comparisons:
+              assert c.ticker in ('SPY', 'QQQ'), f'unexpected ticker {c.ticker}'
+              assert c.price > 0, f'bad price for {c.ticker}: {c.price}'
+              assert len(c.levels) == 4, f'{c.ticker} expected 4 levels, got {len(c.levels)}'
+              assert [lv.period for lv in c.levels] == SMA_PERIODS
+              for lv in c.levels:
+                  assert lv.value > 0
+                  assert lv.above == (lv.deviation_pct >= 0)
+          print()
+          print(format_ma_section(comparisons))
+          print()
+          print('smoke OK')
+          " | tee moving_averages_smoke.txt
+
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
@@ -116,4 +138,5 @@ jobs:
             stretch_overlay_180d.png
             stretch_overlay_360d.txt
             stretch_overlay_360d.png
+            moving_averages_smoke.txt
           retention-days: 30
