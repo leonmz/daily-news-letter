@@ -14,7 +14,6 @@ any timing on top of them.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from typing import Optional
 
 import pandas as pd
@@ -22,7 +21,7 @@ import pandas as pd
 
 SMA_PERIODS = [50, 100, 200, 250]
 DEFAULT_TICKERS = ["SPY", "QQQ"]
-HISTORY_DAYS = 500  # ~350 trading days, leaves ~100d headroom over SMA250
+HISTORY_PERIOD = "2y"  # ~504 trading days, ~100d headroom over SMA250
 
 
 @dataclass
@@ -64,7 +63,7 @@ def compute_ma_comparison(ticker: str, df: pd.DataFrame) -> Optional[MACompariso
                 period=period,
                 value=sma_v,
                 deviation_pct=deviation,
-                above=price > sma_v,
+                above=price >= sma_v,
             )
         )
 
@@ -106,16 +105,10 @@ def fetch_ma_comparisons(tickers: Optional[list[str]] = None) -> list[MAComparis
     except ImportError:
         return []
 
-    end = datetime.now().date()
-    start = end - timedelta(days=HISTORY_DAYS)
     results: list[MAComparison] = []
     for ticker in tickers:
         try:
-            df = yf.Ticker(ticker).history(
-                start=start.isoformat(),
-                end=end.isoformat(),
-                auto_adjust=True,
-            )
+            df = yf.Ticker(ticker).history(period=HISTORY_PERIOD, auto_adjust=True)
             comparison = compute_ma_comparison(ticker, df)
             if comparison is not None:
                 results.append(comparison)
