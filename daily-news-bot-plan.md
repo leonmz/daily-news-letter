@@ -143,57 +143,70 @@ Phase 3 danuglipron trial missed primary endpoint.
 
 ---
 
-## V1.7：QQQ/SPY Trend Snapshot（branch: claude/add-moving-average-analysis-LSYkp）
+## V1.7：QQQ/SPY SMA Comparison Snapshot（branch: claude/add-moving-average-analysis-LSYkp）
 
 ### 动机
-为 daily digest 增加一个紧凑的"趋势状态"区块，告诉用户当下 QQQ/SPY 相对自身 200 日均线的位置 + 建议持仓。背后是 19 年 QLD 回测 + LEAP 对比 + stretch overlay 验证得出的最优策略。
+为 daily digest 增加一个紧凑的"均线对比"区块，展示 SPY 和 QQQ 各自相对 4 条均线（SMA 50/100/200/250）的位置 + 偏离百分比。背后的 200 日均线择时价值由 19 年 QLD 回测验证；其余 3 条提供完整的短/中/长期趋势结构视图。
 
 ### 回测得出的结论（决定本模块设计的依据）
 - QLD + SMA200 pure-cross 二档（above SMA200 → QLD, below → SHY）是 risk-adjusted 最优：
   - CAGR 20.4%, Sharpe 0.72, MaxDD -43.3%, $1M → $37.65M（2006-2025 实测）
 - 加 SMA50 中间档（QLD/QQQ/SHY 三档）：略改善 MaxDD（-35%），但 336 次切换吃掉所有 alpha
-- 加 stretch overlay（拉伸 >18% 降杠杆）：60d/180d/360d 前瞻数据完全否定 mean-reversion 假设，**stretch 高之后未来 6-12 个月反而平均涨更多**（Jegadeesh-Titman momentum）
-- 结论：**简单二档就是终点**。本模块只输出当前状态，不做任何花式择时
+- 加 stretch overlay（拉伸 >18% 降杠杆）：60d/180d/360d 前瞻数据完全否定 mean-reversion 假设，**stretch 高之后未来 6-12 个月反而平均涨更多**（Jegadeesh-Titman momentum）。360d ≥18% 样本 91% 正回报、平均 +26.8%
+- 结论：择时只用 SMA200 binary 信号；其余均线**仅作展示**，不做花式叠加
+
+### 展示哪些均线
+- **SMA50** — 短期趋势
+- **SMA100** — 中期趋势
+- **SMA200** — 牛熊分水岭（唯一有回测验证的择时线）
+- **SMA250** — 约 1 年均线（年度趋势基准）
 
 ### 数据流
 ```
-[yfinance Ticker(QQQ).history(period=400d)] ──→ Close
+[yfinance Ticker(QQQ/SPY).history(period=500d)] ──→ Close (~350 trading days)
                                                   │
-                              ┌──────────────────┴───────┐
-                              ▼                          ▼
-                       SMA200 (rolling 200)        price[-1]
-                              │                          │
-                              └──────────┬───────────────┘
-                                         ▼
-                              TrendState {
-                                 ticker, price, sma200,
-                                 deviation_pct, state (BULL/BEAR),
-                                 last_cross_date, days_in_state
+                              ┌──────────────────┴────────────────┐
+                              ▼                                    ▼
+                    SMA 50/100/200/250 (rolling)            price[-1]
+                              │                                    │
+                              └─────────────┬──────────────────────┘
+                                            ▼
+                              MAComparison {
+                                 ticker, price,
+                                 levels: [MALevel(period, value,
+                                          deviation_pct, above), ...]
                               }
-                                         │
-                                         ▼
-                              format_trend_section()
-                                         │
-                                         ▼
+                                            │
+                                            ▼
+                              format_ma_section()
+                                            │
+                                            ▼
                               拼到 pipeline.generate_digest()
 ```
 
 ### 输出格式示例
 ```
-## 📈 Trend Snapshot (200-day SMA)
-🟢 **QQQ** $498.50 | SMA200 $463.20 (+7.6%) — hold QLD
-   ↳ State held since 2023-03-17 (891 days)
-🟢 **SPY** $581.20 | SMA200 $548.90 (+5.9%) — hold SSO
-   ↳ State held since 2023-03-22 (886 days)
+## 📈 SMA Comparison
+**QQQ** $498.50
+  🟢 SMA50  $475.20  +4.9%
+  🟢 SMA100 $463.10  +7.6%
+  🟢 SMA200 $448.30  +11.2%
+  🟢 SMA250 $440.10  +13.3%
+**SPY** $581.20
+  🟢 SMA50  $565.10  +2.8%
+  🟢 SMA100 $558.40  +4.1%
+  🟢 SMA200 $548.90  +5.9%
+  🔴 SMA250 $590.10  -1.5%
 ```
 
 ### 修改文件
-- `newsletter/moving_averages.py` — 新建模块（compute_trend_state 纯函数 + fetch_trend_states 拉数据 + format_trend_section 输出 Markdown）
-- `newsletter/pipeline.py` — 在 step 3.5 之后注入 trend_section
+- `newsletter/moving_averages.py` — compute_ma_comparison 纯函数 + fetch_ma_comparisons 拉数据 + format_ma_section 输出 Markdown
+- `newsletter/pipeline.py` — 在 step 3.5 注入 ma_section
 - `tests/test_newsletter/test_moving_averages.py` — 单测（合成 OHLCV，无 yfinance 调用）
 
 ### API 用量
-- yfinance Ticker(QQQ/SPY).history(period=400d) — 每天 2 次调用，无配额限制，无新增 key
+- yfinance Ticker(QQQ/SPY).history(period=500d) — 每天 2 次调用，无配额限制，无新增 key
+- 500 自然日 ≈ 350 交易日，给 SMA250 留 ~100 天余量
 
 ---
 

@@ -14,7 +14,7 @@ from newsletter.market_data import (
 )
 from newsletter.news import get_news_for_movers
 from newsletter.digest import analyze_movers
-from newsletter.moving_averages import fetch_trend_states, format_trend_section
+from newsletter.moving_averages import fetch_ma_comparisons, format_ma_section
 
 
 def generate_digest(limit: int = 10) -> str:
@@ -64,18 +64,18 @@ def generate_digest(limit: int = 10) -> str:
     print("[3/6] Analyzing with LLM...")
     digest = analyze_movers(movers, news)
 
-    # Step 3.4: Trend snapshot (QQQ/SPY vs 200-day SMA)
-    print("[3.5/6] Fetching trend snapshot...")
+    # Step 3.4: SMA comparison snapshot (SPY/QQQ vs SMA 50/100/200/250)
+    print("[3.5/6] Fetching SMA comparison...")
     trend_section = ""
     try:
-        trend_states = fetch_trend_states()
-        if trend_states:
-            trend_section = "\n\n" + format_trend_section(trend_states)
-            print(f"      Got states for {[s.ticker for s in trend_states]}")
+        ma_comparisons = fetch_ma_comparisons()
+        if ma_comparisons:
+            trend_section = "\n\n" + format_ma_section(ma_comparisons)
+            print(f"      Got SMA comparison for {[c.ticker for c in ma_comparisons]}")
         else:
-            print("      No trend states available")
+            print("      No SMA comparison available")
     except Exception as e:
-        print(f"      Trend snapshot failed: {e}")
+        print(f"      SMA comparison failed: {e}")
 
     # Step 3.5: Deep analysis (TradingAgents)
     deep_section = ""
