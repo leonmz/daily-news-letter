@@ -1,0 +1,65 @@
+name: Backtest QLD SMA
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Start date"
+        default: "2006-06-21"
+      end:
+        description: "End date"
+        default: "2025-12-31"
+      periods:
+        description: "SMA periods (space-separated)"
+        default: "50 100 200"
+  push:
+    branches:
+      - claude/add-moving-average-analysis-LSYkp
+    paths:
+      - "scripts/backtest_qld_sma.py"
+      - "backtest/**"
+      - ".github/workflows/backtest-qld.yml"
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backtest deps
+        run: pip install yfinance pandas numpy matplotlib
+
+      - name: Run QLD backtest (with hysteresis 1.04/0.95)
+        run: |
+          python scripts/backtest_qld_sma.py \
+            --start "${{ inputs.start || '2006-06-21' }}" \
+            --end "${{ inputs.end || '2025-12-31' }}" \
+            --periods ${{ inputs.periods || '50 100 200' }} \
+            --plot --output qld_sma_hysteresis.png \
+          | tee qld_sma_hysteresis.txt
+
+      - name: Run QLD backtest (pure SMA cross, no hysteresis)
+        run: |
+          python scripts/backtest_qld_sma.py \
+            --start "${{ inputs.start || '2006-06-21' }}" \
+            --end "${{ inputs.end || '2025-12-31' }}" \
+            --periods ${{ inputs.periods || '50 100 200' }} \
+            --no-hysteresis \
+            --plot --output qld_sma_pure_cross.png \
+          | tee qld_sma_pure_cross.txt
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: qld-backtest-results
+          path: |
+            qld_sma_hysteresis.txt
+            qld_sma_hysteresis.png
+            qld_sma_pure_cross.txt
+            qld_sma_pure_cross.png
+          retention-days: 30
