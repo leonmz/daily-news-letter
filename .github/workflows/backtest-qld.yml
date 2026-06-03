@@ -17,6 +17,7 @@ on:
       - claude/add-moving-average-analysis-LSYkp
     paths:
       - "scripts/backtest_qld_sma.py"
+      - "scripts/backtest_qld_qqq_shy_sma.py"
       - "backtest/**"
       - ".github/workflows/backtest-qld.yml"
 
@@ -53,6 +54,19 @@ jobs:
             --plot --output qld_sma_pure_cross.png \
           | tee qld_sma_pure_cross.txt
 
+      - name: Run three-tier QLD/QQQ/SHY regime backtest (hysteresis)
+        run: |
+          python scripts/backtest_qld_qqq_shy_sma.py \
+            --plot --output qld_qqq_shy_hysteresis.png \
+          | tee qld_qqq_shy_hysteresis.txt
+
+      - name: Run three-tier QLD/QQQ/SHY regime backtest (pure cross)
+        run: |
+          python scripts/backtest_qld_qqq_shy_sma.py \
+            --no-hysteresis \
+            --plot --output qld_qqq_shy_pure_cross.png \
+          | tee qld_qqq_shy_pure_cross.txt
+
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
@@ -62,4 +76,8 @@ jobs:
             qld_sma_hysteresis.png
             qld_sma_pure_cross.txt
             qld_sma_pure_cross.png
+            qld_qqq_shy_hysteresis.txt
+            qld_qqq_shy_hysteresis.png
+            qld_qqq_shy_pure_cross.txt
+            qld_qqq_shy_pure_cross.png
           retention-days: 30
