@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from newsletter.pipeline import generate_digest
 from newsletter.formatter import send_telegram
+from newsletter.email_sender import send_email
 
 
 def run_scheduled() -> None:
@@ -40,6 +41,7 @@ def run_scheduled() -> None:
         digest = generate_digest()
         print("\n" + digest)
         send_telegram(digest)
+        send_email(digest)
 
     scheduler.add_job(job, trigger, id="daily_digest")
     print("Scheduler started — next run at 10:00 AM PT")
@@ -131,6 +133,7 @@ def main() -> None:
         digest = generate_digest(args.limit)
         print("\n" + digest)
         send_telegram(digest)
+        send_email(digest)
 
 
 if __name__ == "__main__":

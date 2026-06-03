@@ -22,6 +22,7 @@ from telegram.ext import (
 )
 
 from newsletter import config
+from newsletter.email_sender import send_email
 from newsletter.formatter import format_compact_summary, format_for_telegram
 from newsletter.market_data import get_top_movers, enrich_sector_info, filter_movers_by_size
 from newsletter.pipeline import generate_digest
@@ -270,6 +271,7 @@ async def _scheduled_digest(context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         digest = await asyncio.to_thread(generate_digest)
         await _send_digest_with_button(int(config.TELEGRAM_CHAT_ID), digest, context)
+        await asyncio.to_thread(send_email, digest)
         logger.info("Scheduled digest sent")
     except Exception as e:
         logger.exception("Scheduled digest failed: %s", e)

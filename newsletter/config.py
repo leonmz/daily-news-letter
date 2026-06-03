@@ -11,6 +11,15 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
+# Email delivery (SMTP) — optional, independent of Telegram
+EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "false").lower() == "true"
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT") or "587")  # 465 → implicit SSL, else STARTTLS
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+EMAIL_FROM = os.getenv("EMAIL_FROM", "")  # defaults to SMTP_USERNAME if empty
+EMAIL_TO = os.getenv("EMAIL_TO", "")  # comma-separated recipients
+
 # User watchlist (comma-separated tickers, max 10)
 WATCHLIST = [t.strip().upper() for t in os.getenv("WATCHLIST", "").split(",") if t.strip()][:10]
 
