@@ -160,18 +160,17 @@ def main():
 
     # Daily return series for Sharpe
     def daily_strategy_ret(result) -> pd.Series:
-        pos = result.position_history
         price_returns = result.equity_curve.pct_change().fillna(0)
         return price_returns  # equity-based daily return already accounts for in-market only
 
     rows = [
-        summarize(f"QLD real (lev=1, 0.95% fee)", res_qld.equity_curve,
+        summarize("QLD real (lev=1, 0.95% fee)", res_qld.equity_curve,
                   daily_strategy_ret(res_qld)),
-        summarize(f"2x QQQ daily-reset (theoretical)", res_2x.equity_curve,
+        summarize("2x QQQ daily-reset (theoretical)", res_2x.equity_curve,
                   daily_strategy_ret(res_2x)),
-        summarize(f"2x QQQ path-independent (LEAP-eq)", equity_pi, ret_pi),
-        summarize(f"QQQ B&H", qqq_bh.equity_curve, daily_strategy_ret(qqq_bh)),
-        summarize(f"QLD B&H", qld_bh.equity_curve, daily_strategy_ret(qld_bh)),
+        summarize("2x QQQ path-independent (LEAP-eq)", equity_pi, ret_pi),
+        summarize("QQQ B&H", qqq_bh.equity_curve, daily_strategy_ret(qqq_bh)),
+        summarize("QLD B&H", qld_bh.equity_curve, daily_strategy_ret(qld_bh)),
     ]
 
     print(f"\n{'=' * 110}")
@@ -184,7 +183,7 @@ def main():
     cagr_2x = calculate_cagr(res_2x.equity_curve)
     cagr_pi = calculate_cagr(equity_pi)
 
-    print(f"\n  Gap decomposition (CAGR):")
+    print("\n  Gap decomposition (CAGR):")
     print(f"    Path-indep 2x QQQ  : {cagr_pi:.2%}")
     print(f"    Daily-reset 2x QQQ : {cagr_2x:.2%}   gap = -{(cagr_pi - cagr_2x):.2%}  ← pure vol-decay cost")
     print(f"    QLD real           : {cagr_qld:.2%}   gap = -{(cagr_2x - cagr_qld):.2%}  ← QLD tracking + fee inefficiency")
@@ -194,7 +193,7 @@ def main():
     f_qld = res_qld.equity_curve.iloc[-1]
     f_2x = res_2x.equity_curve.iloc[-1]
     f_pi = equity_pi.iloc[-1]
-    print(f"\n  Final value ratio (vs QLD):")
+    print("\n  Final value ratio (vs QLD):")
     print(f"    2x daily-reset / QLD : {f_2x / f_qld:.2f}x  (you'd have ${f_2x/1e6:.1f}M instead of ${f_qld/1e6:.1f}M)")
     print(f"    Path-indep 2x / QLD  : {f_pi / f_qld:.2f}x  (you'd have ${f_pi/1e6:.1f}M instead of ${f_qld/1e6:.1f}M)")
 

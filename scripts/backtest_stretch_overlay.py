@@ -60,7 +60,7 @@ def stretch_distribution(qqq_close: pd.Series, sma200: pd.Series) -> None:
 def forward_returns_by_threshold(qqq_close: pd.Series, sma200: pd.Series, days: int = 60) -> None:
     stretch = (qqq_close - sma200) / sma200
     print(f"\n--- Phase 2: Forward {days}d QQQ return after first crossing into each threshold ---")
-    print(f"  (Crossing = stretch < t yesterday AND stretch ≥ t today)")
+    print("  (Crossing = stretch < t yesterday AND stretch ≥ t today)")
 
     print(f"\n  {'Threshold':>10} {'N':>4} {'AvgFwd':>9} {'Median':>9} {'Worst':>9} {'%>0':>6} {'<-10%':>7}")
     for t in [0.10, 0.12, 0.15, 0.18, 0.20, 0.25]:

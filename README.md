@@ -1,73 +1,34 @@
-# Daily Market News Bot
+# Market Backtest + Data Provider
 
-Automated daily digest of top 10 market movers, grouped by sector with AI-analyzed drivers.
+Two standalone libraries:
+
+- **`backtest/`** — SMA-timing backtesting engine + strategies.
+- **`data/`** — market-data provider adapter layer (Alpaca, Finnhub, FRED, yfinance, CBOE) with fallback routing + SQLite caching.
+
+> Note: the former daily-newsletter / Telegram-bot application was removed; this
+> repo is now just the backtesting and data-provider libraries.
 
 ## Quick start
 
 ```bash
-# 1. Install dependencies
 pip install -r requirements.txt
-
-# 2. Set up API keys
-cp .env.example .env
-# Edit .env with your keys
-
-# 3. Test with mock data (no API keys needed)
-python main.py --test
-
-# 4. Run once (needs at least FMP key)
-python main.py
-
-# 5. Run Telegram bot (commands + daily 10AM PT schedule)
-python main.py --bot
+cp .env.example .env   # add provider API keys (all optional; yfinance + CBOE need none)
 ```
 
 ## Architecture
 
 ```
 daily-news-letter/
-├── newsletter/     # Core pipeline (config, market data, news, LLM, formatter)
-├── bot/            # Telegram bot command handlers + scheduler
-├── backtest/       # SMA timing backtesting engine
-├── data/           # Provider adapter layer (Phase 0, not yet wired to pipeline)
+├── backtest/   # SMA timing backtest engine + strategies
+├── data/       # Provider adapter layer (quotes, news, options, macro, fundamentals)
 ├── scripts/
-│   ├── run_newsletter.py  # Newsletter CLI entry point
-│   └── run_backtest.py    # Backtesting CLI entry point
-├── tests/
-│   ├── test_newsletter/
-│   ├── test_backtest/
-│   ├── test_bot/
-│   └── test_providers/
-└── main.py         # Thin shim → scripts/run_newsletter.py (backwards compat)
+│   ├── run_backtest.py    # Backtesting CLI entry point
+│   ├── diagnose.py        # Provider-layer diagnostics (20 checks)
+│   └── backtest_*.py      # Ad-hoc backtest studies
+└── tests/
+    ├── test_backtest/
+    └── test_providers/
 ```
-
-### Data flow
-
-```
-Market Data (FMP/yfinance)        ─┐
-News (Marketaux/yfinance/Google)  ─┤→ newsletter/pipeline.py → LLM → formatter → Telegram
-User watchlist (config.py)        ─┘
-```
-
-## API keys
-
-| API | Free tier | What it does |
-|-----|-----------|--------------|
-| **FMP** | 250 req/day | Top movers + sector data |
-| **Marketaux** | 100 req/day | News by ticker + sentiment (optional) |
-| **Gemini** | Free tier | LLM analysis of catalysts |
-| **Telegram** | Free | Message delivery |
-
-Minimum to run: **no keys required** (yfinance fallback for data, Google News for news, template for analysis).
-
-## Bot commands
-
-| Command | Description |
-|---------|-------------|
-| `/digest` | Generate full market digest on-demand |
-| `/movers` | Quick top movers summary (no LLM) |
-| `/watchlist` | Show / add / remove watchlist tickers |
-| `/help` | List available commands |
 
 ## Backtesting
 
@@ -78,3 +39,19 @@ python scripts/run_backtest.py --underlying TSLA --plot
 ```
 
 See [`backtest/README.md`](backtest/README.md) for full docs.
+
+## Data providers
+
+```bash
+python scripts/diagnose.py   # validate provider connectivity + cross-check
+```
+
+| Provider | API key | What it does |
+|----------|---------|--------------|
+| **Alpaca** | `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | IEX real-time quotes, Benzinga news, movers |
+| **Finnhub** | `FINNHUB_API_KEY` | Fundamentals, earnings, analyst ratings |
+| **FRED** | `FRED_API_KEY` | Macro indicators, yield curve |
+| **yfinance** | none | Delayed quotes, historical OHLCV, options |
+| **CBOE** | none | Exchange pre-computed option Greeks |
+
+See [`data/README.md`](data/README.md) for the provider layer design.
