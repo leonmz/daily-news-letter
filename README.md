@@ -55,3 +55,37 @@ python scripts/diagnose.py   # validate provider connectivity + cross-check
 | **CBOE** | none | Exchange pre-computed option Greeks |
 
 See [`data/README.md`](data/README.md) for the provider layer design.
+
+## Robinhood MCP (read-only)
+
+[`robinhood-mcp`](https://github.com/verygoodplugins/robinhood-mcp) is a **read-only** MCP server for Robinhood portfolio research (positions, history, quotes via the unofficial `robin_stocks` API). It **cannot place trades**.
+
+**Setup (run locally — not in a shared/cloud container):**
+
+1. Install [`uv`](https://docs.astral.sh/uv/) (provides `uvx`).
+2. Create `.mcp.json` in the repo root — no secrets, credentials come from env vars:
+   ```json
+   {
+     "mcpServers": {
+       "robinhood": {
+         "command": "uvx",
+         "args": ["robinhood-mcp"],
+         "env": {
+           "ROBINHOOD_USERNAME": "${ROBINHOOD_USERNAME}",
+           "ROBINHOOD_PASSWORD": "${ROBINHOOD_PASSWORD}"
+         }
+       }
+     }
+   }
+   ```
+   (Equivalent CLI: `claude mcp add robinhood -- uvx robinhood-mcp`, then set the env vars.)
+3. Export your Robinhood credentials in your shell — **never commit them**:
+   ```bash
+   export ROBINHOOD_USERNAME="you@example.com"
+   export ROBINHOOD_PASSWORD="your_password"
+   ```
+4. Run Claude Code in this repo and **approve** the `robinhood` server when prompted. On first login (no TOTP), approve the push notification in the Robinhood app once; the session caches for days/weeks.
+
+For non-interactive MFA, add `"ROBINHOOD_TOTP_SECRET": "${ROBINHOOD_TOTP_SECRET}"` to the `env` block and export that base32 secret too.
+
+> ⚠️ Unofficial API — small account-flagging risk; read-only only. For **real trade execution**, use Robinhood's official [Agentic Trading](https://robinhood.com/us/en/support/articles/agentic-trading-overview/) MCP instead (separate in-app setup with a dedicated funded account) — not this config.
