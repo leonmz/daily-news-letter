@@ -1,0 +1,13 @@
+.git
+.github
+deploy
+tests
+*.md
+.env
+.venv
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+monitor_state.json
+*.bundle

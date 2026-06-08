@@ -19,6 +19,7 @@ class Alert:
     current: float
     pct_change: float          # current vs reference
     pct_from_baseline: float   # current vs baseline
+    threshold: float = 0.0     # the % threshold this move cleared
 
 
 def evaluate(
@@ -26,16 +27,20 @@ def evaluate(
     current: dict[str, float],
     threshold: float,
     baseline: dict[str, float] | None = None,
+    thresholds: dict[str, float] | None = None,
 ) -> tuple[list[Alert], dict[str, float]]:
     """Return ``(alerts, updated_references)``.
 
     For every symbol in ``current`` with a positive reference, fire an Alert when
-    the percentage move vs reference strictly exceeds ``threshold`` in absolute
-    value. Triggered symbols ratchet their reference to the current value.
-    Symbols with no/zero reference are seeded (reference set to current) and never
-    alert on this call.
+    the percentage move vs reference strictly exceeds that symbol's threshold in
+    absolute value. The threshold is ``thresholds[symbol]`` if present, else the
+    scalar ``threshold`` default — so equities can use 1% while VIX/VXN use 10%.
+    Triggered symbols ratchet their reference to the current value. Symbols with
+    no/zero reference are seeded (reference set to current) and never alert on
+    this call.
     """
     baseline = baseline or {}
+    thresholds = thresholds or {}
     alerts: list[Alert] = []
     new_refs = dict(references)
 
@@ -44,8 +49,9 @@ def evaluate(
         if ref is None or ref == 0:
             new_refs[symbol] = cur
             continue
+        limit = thresholds.get(symbol, threshold)
         pct = (cur - ref) / ref * 100.0
-        if abs(pct) > threshold:
+        if abs(pct) > limit:
             base = baseline.get(symbol, ref)
             pct_base = ((cur - base) / base * 100.0) if base else pct
             alerts.append(
@@ -56,6 +62,7 @@ def evaluate(
                     current=cur,
                     pct_change=pct,
                     pct_from_baseline=pct_base,
+                    threshold=limit,
                 )
             )
             new_refs[symbol] = cur  # ratchet

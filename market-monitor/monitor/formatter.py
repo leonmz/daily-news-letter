@@ -51,7 +51,7 @@ def _equity_lines(r: Reading) -> list[str]:
     return lines
 
 
-def build_body(snapshot: Snapshot, alerts: list[Alert] | None, threshold: float) -> list[str]:
+def build_body(snapshot: Snapshot, alerts: list[Alert] | None) -> list[str]:
     """Build the shared plain-text body lines (used for both text and <pre> html)."""
     alerts = alerts or []
     equities = [r for r in snapshot.readings if not r.symbol.startswith("^")]
@@ -59,12 +59,13 @@ def build_body(snapshot: Snapshot, alerts: list[Alert] | None, threshold: float)
     lines: list[str] = []
 
     if alerts:
-        lines.append(f"⚠️ Triggered (>{threshold:.1f}% vs baseline)")
+        lines.append("⚠️ Triggered (move vs baseline cleared its threshold)")
         for a in alerts:
             sym = display_symbol(a.symbol)
+            limit = f" (>{a.threshold:g}%)" if a.threshold else ""
             lines.append(
                 f"  {_arrow(a.pct_from_baseline)} {sym:<5} {_fmt_signed(a.pct_from_baseline)} vs base"
-                f"   {a.baseline:.2f} → {a.current:.2f}"
+                f"{limit}   {a.baseline:.2f} → {a.current:.2f}"
             )
         lines.append("")
 
@@ -111,7 +112,7 @@ def render(
         subject = f"📊 Market Monitor — {when}"
         title = subject
 
-    body = [title, ""] + build_body(snapshot, alerts, threshold)
+    body = [title, ""] + build_body(snapshot, alerts)
     text = "\n".join(body).rstrip() + "\n"
 
     html = (

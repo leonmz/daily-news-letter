@@ -152,6 +152,37 @@ market-monitor/
 
 ---
 
+## V1.1：Per-symbol 告警阈值（财务顾问建议）
+
+1% 对不同标的含义不同。SPY/QQQ 日内波动 ~0.5–1%，>1% 是真信号；VIX/VXN 日均波动
+~5%，1% 纯噪声。默认阈值：
+
+| 标的 | 阈值 | 理由 |
+|---|---|---|
+| SPY, QQQ | 1% | 有意义的指数日 |
+| VIX, VXN | 10% | 平衡：滤掉日常噪声，抓住情绪切换（每月几次） |
+
+档位：5=灵敏(吵) · 10=平衡(推荐) · 15=只报大波动。
+
+实现：`evaluate(..., thresholds={sym: pct})` 每标的阈值，缺省回退到
+`ALERT_THRESHOLD_PCT`；`Alert.threshold` 记录触发阈值，邮件按行显示 `(>X%)`。
+配置：`ALERT_THRESHOLDS=^VIX:10,^VXN:10`（缺省）+ `ALERT_THRESHOLD_PCT=1.0`。
+
+## V1.2：CI + 自动部署到 GCP（serverless）
+
+- **CI** `.github/workflows/ci.yml`：ruff + import check + pytest。
+- **CD** `.github/workflows/deploy.yml`：push 到 main → 跑测试 → Cloud Build 构建镜像
+  → Artifact Registry → `gcloud run jobs update` 滚动 Cloud Run Job。
+- **运行形态**：Cloud Scheduler（cron，太平洋时区，DST 自动）每 5 分钟触发 Cloud Run
+  Job 跑 `main.py --tick`（开盘首跑建基准并发邮件，其后仅超阈值发告警）；app 用
+  `is_market_open()` 把非交易时段触发变成空操作。
+- **状态**：`STATE_PATH=gs://bucket/state.json`（Cloud Run 文件系统易失；state.py 增
+  GCS 后端，lazy import google-cloud-storage）。
+- **密钥**：Gmail App Password 存 Secret Manager，注入 `EMAIL_PASSWORD`。
+- **鉴权**：GitHub Actions 用 Workload Identity Federation（无长期密钥）。
+- **一次性引导** `deploy/gcp_setup.sh`：建 AR / GCS 桶 / 密钥 / SA / IAM / Job /
+  Scheduler / WIF。详见 `deploy/README.md`。替代方案：GCE e2-micro 跑 `--schedule`。
+
 ## 进度
 
 - [x] plan（本文件）
@@ -162,8 +193,10 @@ market-monitor/
 - [x] 投递层：email_send（Gmail SMTP 587/465）
 - [x] 编排层：runner + main CLI
 - [x] 离线单测 + CI（ruff + import check + pytest）
+- [x] V1.1: per-symbol 阈值（VIX/VXN 默认 10%）
+- [x] V1.2: Dockerfile + GCS state + CD(deploy.yml) + gcp_setup.sh（pipeline-as-code）
 - [ ] 用户填入 Gmail App Password 后端到端真发一封
-- [ ] 部署（cron / systemd / 容器常驻 `--schedule`）
+- [ ] 在 GCP 项目跑 deploy/gcp_setup.sh + 配置 GitHub vars/secrets 完成首次部署
 
 ---
 

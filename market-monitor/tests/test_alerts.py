@@ -55,3 +55,16 @@ def test_multi_instrument_and_seeding():
 
     alerts2, _ = evaluate(refs, {"SPY": 100.2, "VIX": 14.3}, 1.0, {"SPY": 100.0, "VIX": 14.0})
     assert [a.symbol for a in alerts2] == ["VIX"]  # +2.14%
+
+
+def test_per_symbol_threshold_overrides():
+    thr = {"^VIX": 10.0}
+    # VIX +5% is below its 10% override → no alert (would have fired at the 1% default).
+    a1, _ = evaluate({"^VIX": 14.0}, {"^VIX": 14.7}, 1.0, {"^VIX": 14.0}, thresholds=thr)
+    assert a1 == []
+    # VIX +12.1% clears the 10% override and records that threshold on the alert.
+    a2, _ = evaluate({"^VIX": 14.0}, {"^VIX": 15.7}, 1.0, {"^VIX": 14.0}, thresholds=thr)
+    assert len(a2) == 1 and a2[0].threshold == 10.0
+    # An equity with no override still uses the 1.0 scalar default.
+    a3, _ = evaluate({"SPY": 100.0}, {"SPY": 101.5}, 1.0, {"SPY": 100.0}, thresholds=thr)
+    assert len(a3) == 1 and a3[0].threshold == 1.0

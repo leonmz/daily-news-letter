@@ -65,6 +65,7 @@ def check_and_alert(*, send: bool = True) -> list[Alert]:
     alerts, new_refs = evaluate(
         state.get("refs", {}), snap.prices(),
         config.ALERT_THRESHOLD_PCT, state.get("baseline", {}),
+        thresholds=config.ALERT_THRESHOLDS,
     )
     if alerts:
         state["refs"] = new_refs

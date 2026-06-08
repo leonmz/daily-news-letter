@@ -5,6 +5,7 @@ Usage:
     python main.py --once       # fetch a snapshot now and email it (one-off)
     python main.py --baseline   # set today's baseline now and email it
     python main.py --schedule   # run the scheduler (6:30 PT baseline + 5-min monitor)
+    python main.py --tick       # one monitoring tick (for Cloud Run Job + Cloud Scheduler)
     python main.py --test       # offline: render mock emails and print them (no network/SMTP)
     python main.py --once --no-send   # print only, do not send
 """
@@ -54,13 +55,13 @@ def run_test() -> None:
     _print_email(*render(base, kind="baseline", threshold=1.0))
 
     alerts = [
-        Alert("SPY", 589.25, 589.25, 595.90, 1.13, 1.13),
-        Alert("^VIX", 14.20, 14.20, 14.95, 5.28, 5.28),
+        Alert("SPY", 589.25, 589.25, 595.90, 1.13, 1.13, 1.0),
+        Alert("^VIX", 14.20, 14.20, 15.95, 12.32, 12.32, 10.0),
     ]
     moved = Snapshot("2026-06-08T07:15", "2026-06-08", [
         Reading("SPY", 595.90, spy_ma),
         Reading("QQQ", 498.50, qqq_ma),
-        Reading("^VIX", 14.95, None),
+        Reading("^VIX", 15.95, None),
         Reading("^VXN", 17.85, None),
     ])
     print("\nTEST MODE — alert email\n")
@@ -72,6 +73,8 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="Fetch + email a snapshot now")
     parser.add_argument("--baseline", action="store_true", help="Set today's baseline now + email")
     parser.add_argument("--schedule", action="store_true", help="Run the scheduler")
+    parser.add_argument("--tick", action="store_true",
+                        help="One monitoring tick (baseline if needed, else alert) — for Cloud Run + Scheduler")
     parser.add_argument("--test", action="store_true", help="Offline mock render (no network/SMTP)")
     parser.add_argument("--no-send", action="store_true", help="Print only; do not send email")
     args = parser.parse_args()
@@ -83,6 +86,11 @@ def main() -> None:
     if args.schedule:
         from monitor.runner import run_schedule
         run_schedule()
+        return
+
+    if args.tick:
+        from monitor.runner import check_and_alert
+        check_and_alert(send=not args.no_send)
         return
 
     if args.baseline:

@@ -37,13 +37,14 @@ def test_baseline_render():
 
 def test_alert_render():
     alerts = [
-        Alert("^VIX", 14.20, 14.20, 14.95, 5.28, 5.28),
-        Alert("SPY", 589.25, 589.25, 595.90, 1.13, 1.13),
+        Alert("^VIX", 14.20, 14.20, 15.95, 12.32, 12.32, 10.0),
+        Alert("SPY", 589.25, 589.25, 595.90, 1.13, 1.13, 1.0),
     ]
     subject, html, text = render(_snap("2026-06-08T07:15"), kind="alert", alerts=alerts, threshold=1.0)
     assert "Alert" in subject
     assert "VIX" in subject and "SPY" in subject
     assert "Triggered" in text
     assert "+1.13%" in text
-    assert "+5.28%" in text
+    assert "+12.32%" in text
+    assert "(>10%)" in text  # per-symbol threshold shown
     assert "<pre" in html

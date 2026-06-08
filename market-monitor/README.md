@@ -54,7 +54,8 @@ Verification**, then create a 16-character **App Password** at
 | `python main.py --once` | Fetch a live snapshot now and email it |
 | `python main.py --baseline` | Set today's baseline now and email it |
 | `python main.py --schedule` | Run the scheduler (baseline + 5-min monitor) |
-| `--no-send` | With `--once`/`--baseline`: print only, don't send |
+| `python main.py --tick` | One monitoring tick (used by Cloud Run Job + Scheduler) |
+| `--no-send` | With `--once`/`--baseline`/`--tick`: print only, don't send |
 
 ## Architecture
 
@@ -99,11 +100,33 @@ python -m pytest -v
 All unit tests are offline — synthetic OHLCV and dataclasses, no yfinance or
 SMTP calls.
 
+## Alert thresholds (per symbol)
+
+A 1% move means different things by instrument. SPY/QQQ move ~0.5–1%/day, so >1%
+from the open is a real signal. But VIX/VXN swing ~5%/day on average — at 1%
+you'd be paged on noise. Defaults use **1% for equities, 10% for VIX/VXN**:
+
+| Instrument | Default | Why |
+|-----------|---------|-----|
+| SPY, QQQ | **1%** | a meaningful index day |
+| VIX, VXN | **10%** | balanced: filters daily noise, catches regime shifts (~few/month) |
+
+Set `ALERT_THRESHOLDS=^VIX:10,^VXN:10` (per-symbol overrides) and
+`ALERT_THRESHOLD_PCT=1.0` (default for everything else). VIX/VXN tiers if you
+want to retune: **5** = sensitive/chatty · **10** = balanced (recommended) ·
+**15** = only big fear spikes.
+
+## Deploy (GCP, auto)
+
+Push-to-main → GitHub Actions → Cloud Run Job on a Cloud Scheduler cron (6:30 PT
+baseline + every 5 min, market hours). State in GCS, App Password in Secret
+Manager, keyless auth via Workload Identity Federation. One-time bootstrap and
+full runbook: [`deploy/README.md`](deploy/README.md).
+
 ## Configuration
 
 Every knob is an env var (see `.env.example`): instruments (`EQUITY_TICKERS`,
 `VOL_TICKERS`), `SMA_PERIODS`, schedule (`BASELINE_HOUR/MINUTE`,
-`REFRESH_MINUTES`, `MONITOR_TZ`), `ALERT_THRESHOLD_PCT`, and `HISTORY_PERIOD`.
-
-> Note: VIX/VXN are themselves volatile, so a 1% threshold will alert on them
-> fairly often. Raise `ALERT_THRESHOLD_PCT` if that's too chatty.
+`REFRESH_MINUTES`, `MONITOR_TZ`), thresholds (`ALERT_THRESHOLD_PCT`,
+`ALERT_THRESHOLDS`), `HISTORY_PERIOD`, and `STATE_PATH` (local file or
+`gs://bucket/key` for Cloud Run).

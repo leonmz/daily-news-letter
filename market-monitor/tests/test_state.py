@@ -1,6 +1,11 @@
 """Unit tests for monitor.state — JSON round-trip + resilience."""
 
-from monitor.state import load_state, save_state
+from monitor.state import _gcs_split, load_state, save_state
+
+
+def test_gcs_split():
+    assert _gcs_split("gs://my-bucket/path/to/state.json") == ("my-bucket", "path/to/state.json")
+    assert _gcs_split("gs://only-bucket") == ("only-bucket", "")
 
 
 def test_roundtrip(tmp_path):
